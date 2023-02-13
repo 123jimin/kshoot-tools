@@ -1,0 +1,47 @@
+{
+    "name": "kshoot-tools",
+    "version": "0.0.1",
+    "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
+    "files": ["/dist"],
+    "main": "dist/index.js",
+    "typings": "dist/index.d.ts",
+    "type": "module",
+    "scripts": {
+      "prepare": "npm run build",
+      "clean": "rm -r dist/",
+      "build": "npx tsc",
+      "watch": "npx tsc --watch",
+      "lint": "npx eslint src/",
+      "test": "npx mocha"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/123jimin/kshoot-tools.git"
+    },
+    "keywords": [
+      "kshoot",
+      "ksh",
+      "kson",
+      "sdvx",
+      "kshootmania"
+    ],
+    "author": "Jimin Park",
+    "license": "MIT",
+    "bugs": {
+      "url": "https://github.com/123jimin/kshoot-tools/issues"
+    },
+    "homepage": "https://github.com/123jimin/kshoot-tools#readme",
+    "devDependencies": {
+      "@types/node": "^18.13.0",
+      "@typescript-eslint/eslint-plugin": "^5.50.0",
+      "@typescript-eslint/parser": "^5.50.0",
+      "chai": "^4.3.7",
+      "eslint": "^8.33.0",
+      "mocha": "^10.2.0",
+      "typescript": "^4.9.5"
+    },
+    "dependencies": {
+      "kshoot": "123jimin/kshoot.js"
+    }
+  }
+  
