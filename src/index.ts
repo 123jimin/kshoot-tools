@@ -2,7 +2,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
 import * as kshoot from 'kshoot';
-export {kshoot};
+export * as kshoot from 'kshoot';
 
 import {Radar, Params as RadarParams} from "./radar.js";
 export * as radar from "./radar.js";
