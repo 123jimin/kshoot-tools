@@ -2,15 +2,20 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
 import * as kshoot from 'kshoot';
+export {kshoot};
+
+import {Radar, Params as RadarParams} from "./radar.js";
+export * as radar from "./radar.js";
 
 import {Renderer, Params as RendererParams} from "./render.js";
 export * as render from "./render.js";
 
 export type LoadPathParams = { type: 'path', file_or_dir_path: string };
 export type LoadFileParams = { type: 'files', file_paths: string[] };
+export type SetDataParams = { type: 'set', data: Record<string, string|Buffer> }
 export type LoadDirectoryParams = { type: 'directory', dir_path: string };
 
-export type LoadParams = LoadPathParams | LoadFileParams | LoadDirectoryParams;
+export type LoadParams = LoadPathParams | LoadFileParams | SetDataParams | LoadDirectoryParams;
 
 export type RenderParams = RendererParams & { save_to_file?: boolean, out_dir?: string };
 
@@ -24,15 +29,34 @@ export class KShootChartContext {
         this.context = context;
     }
 
+    set(source_path: string, chart_data: string|Buffer) {
+        this.file_path = source_path;
+        this.file_name = path.basename(source_path);
+        this.chart = kshoot.parse((typeof chart_data === 'string') ? chart_data : chart_data.toString('utf-8'));
+    }
+
     async load(file_path: string) {
-        this.file_path = file_path;
-        this.file_name = path.basename(file_path);
-        this.chart = kshoot.parse(await fs.readFile(file_path, 'utf-8'));
+        this.set(file_path, await fs.readFile(file_path));
     }
 
     toString(): string {
         if(!this.chart) return `[Invalid chart from "${this.file_name}"]`;
         return `[Chart "${this.chart.meta.title.trim()}" (${this.chart.difficulty_id} ${this.chart.meta.level}) from "${this.file_name}"]`;
+    }
+
+    getStatDescription(this: {chart: kshoot.Chart}): string {
+        const stat: kshoot.tools.stat.Stat = kshoot.tools.stat.getStat(this.chart);
+
+        return `
+            ${this.toString()}
+            - notes: ${stat.notes} (${stat.chips} chips + ${stat.holds} holds)
+            - max density: ${stat.max_density}
+            - lasers ${stat.moving_lasers + stat.slams} (${stat.moving_lasers} moving lasers + ${stat.slams} slams)
+            - one hand: ${stat.one_hand_notes}
+            - hand trip: ${stat.wrong_side_notes}
+            - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4,].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)})
+            - sofulan: ${stat.bpm_change_intensity.toFixed(1)} (${stat.bpm_changes} BPM changes)
+        `.split('\n').map((line) => line.trim()).join('\n').trim();
     }
 }
 
@@ -58,6 +82,7 @@ export class KShootTools implements KShootContext {
                 break;
             }
             case 'files': await this.loadFiles(params); break;
+            case 'set': this.setData(params); break;
             case 'directory': await this.loadDirectory(params); break;
         }
     }
@@ -91,6 +116,17 @@ export class KShootTools implements KShootContext {
         });
     }
 
+    setData(params: SetDataParams) {
+        this.reset();
+
+        for(const source_path in params.data) {
+            const chart = new KShootChartContext(this);
+            chart.set(source_path, params.data[source_path]);
+
+            if(chart.chart) this.charts.push(chart as (KShootChartContext & {chart: kshoot.Chart}));
+        }
+    }
+
     async loadDirectory(params: LoadDirectoryParams) {
         this.reset();
 
@@ -109,25 +145,33 @@ export class KShootTools implements KShootContext {
         const lines = [
             `${this.charts.length} chart${this.charts.length === 1 ? '' : 's'} from "${this.dir_path}"`
         ];
-        for(const chart_ctx of this.charts) lines.push(` - ${chart_ctx.toString()}`); 
+        for(const chart_ctx of this.charts) lines.push(`- ${chart_ctx.toString()}`); 
         return lines.join('\n');
     }
+
+    getStatDescriptions(): string[] {
+        const stats: string[] = [];
+        for(const chart_ctx of this.charts) {
+            stats.push(chart_ctx.getStatDescription());
+        }
+        return stats;
+    }
     
-    async render(params: RenderParams): Promise<Record<string, Buffer>> {
-        const ret: Record<string, Buffer> = {};
-        await Promise.all(this.charts.map(async (chart_ctx) => {
-            const renderer = new Renderer(chart_ctx.chart);
-            const buffer = await renderer.render(params);
+    getRadars(): Radar[] {
+        return this.charts.map((chart_ctx) => new Radar(chart_ctx.chart));
+    }
 
-            if(params.save_to_file) {
-                const dir_path = params.out_dir ?? (this.dir_path || process.cwd());
-                const image_file_name = `${chart_ctx.file_name}.png`;
+    async save(out_dir: string, data: (Buffer|string|null)[], pathMap?: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string) {
+        if(!pathMap) pathMap = (chart_ctx) => `${chart_ctx.file_name}.png`;
 
-                await fs.writeFile(path.join(dir_path, image_file_name), buffer);
-            }
+        await Promise.all(data.map(async (data, ind) => {
+            if(data == null || !pathMap) return;
 
-            ret[chart_ctx.file_name] = buffer;
+            const dir_path = out_dir || this.dir_path ||  process.cwd();
+            const file_path = path.join(dir_path, pathMap(this.charts[ind]));
+
+            if(typeof data === 'string') await fs.writeFile(file_path, data, 'utf-8');
+            else await fs.writeFile(file_path, data);
         }));
-        return ret;
     }
 }
