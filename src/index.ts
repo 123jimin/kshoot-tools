@@ -49,19 +49,21 @@ export class KShootChartContext {
 
         return `
             ${this.toString()}
+            - BPM: ${this.chart.meta.disp_bpm} (median: ${this.chart.getMedianBPM()})
             - notes: ${stat.notes} (${stat.chips} chips + ${stat.holds} holds)
             - max density: ${stat.max_density}
-            - lasers ${stat.moving_lasers + stat.slams} (${stat.moving_lasers} moving lasers + ${stat.slams} slams)
+            - lasers: ${stat.moving_lasers + stat.slams} (${stat.moving_lasers} moving lasers + ${stat.slams} slams)
             - one hand: ${stat.one_hand_notes}
             - hand trip: ${stat.wrong_side_notes}
-            - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4,].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)})
+            - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4, 5].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)})
             - sofulan: ${stat.bpm_change_intensity.toFixed(1)} (${stat.bpm_changes} BPM changes)
         `.split('\n').map((line) => line.trim()).join('\n').trim();
     }
 }
 
 export interface KShootContext {
-
+    dir_path: string;
+    charts: (KShootChartContext & {chart: kshoot.Chart})[];
 }
 
 export class KShootTools implements KShootContext {

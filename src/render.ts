@@ -15,7 +15,7 @@ export class Renderer {
     }
 
     renderBackground(range: kshoot.PulseRange, ctx: CanvasRenderingContext2D) {
-
+        // empty
     }
 
     renderButtons(range: kshoot.PulseRange, ctx: CanvasRenderingContext2D) {
@@ -38,7 +38,7 @@ export class Renderer {
     }
 
     renderLasers(range: kshoot.PulseRange, ctx: CanvasRenderingContext2D) {
-
+        // empty
     }
 
     renderRange(range: kshoot.PulseRange): Canvas {

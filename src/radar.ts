@@ -20,8 +20,7 @@ export interface Shape {
     size: number;
 }
 
-export interface Params {
-}
+export type Params = unknown;
 
 const HEXAGON_DIRS = Object.freeze([
     [0, -1],
@@ -92,22 +91,38 @@ export class Radar {
 
     getRadarStat(): RadarStat {
         const stat = this.stat;
+
+        const bc_jacks = [1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y);
+        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y);
+
+        // TODO: find more accurate formulas
         return {
-            notes: stat.notes,
-            peak: stat.max_density,
-            tsumami: stat.moving_lasers + stat.slams,
-            one_hand: stat.one_hand_notes,
-            hand_trip: stat.wrong_side_notes,
-            tricky: 0,
+            notes: 454 + stat.chips + 0.12 * stat.holds + 0.04 * stat.hold_chains - 0.24 * stat.one_hand_notes,
+            peak: 12 + stat.max_density,
+            tsumami: 125 + stat.slams + 1.8 * stat.moving_lasers + 0.6 * stat.moving_laser_chains,
+            one_hand: 55 + stat.one_hand_notes,
+            hand_trip: 55 + stat.wrong_side_notes,
+            tricky: 10 + 0.02 * stat.bpm_change_intensity + bc_jacks + 2.0 * adlr_jacks,
         };
     }
 
     getScaledRadarStat(): RadarStat {
         const radar_stat = this.getRadarStat();
 
-        radar_stat.notes /= 10;
-        radar_stat.peak /= 1;
-        radar_stat.tsumami /= 10;
+        // TODO: find proper normalization values
+        radar_stat.notes /= 1000 / 100;
+        radar_stat.peak /= 63 / 100;
+        radar_stat.tsumami /= 860 / 100;
+        radar_stat.one_hand /= 3;
+        radar_stat.hand_trip /= 3;
+        radar_stat.tricky /= 50 / 100;
+
+        for(const str_k in radar_stat) {
+            const k = str_k as keyof RadarStat;
+
+            if(radar_stat[k] < 10) radar_stat[k] = 10;
+            if(radar_stat[k] >= 1000) radar_stat[k] = 1000;
+        }
 
         return radar_stat;
     }
@@ -135,9 +150,9 @@ export class Radar {
             radar_stat.notes, radar_stat.peak, radar_stat.tsumami, radar_stat.tricky, radar_stat.hand_trip, radar_stat.one_hand, 
         ];
         
-        const gradient = ctx.createRadialGradient(0, 0, this.shape.size, 0, 0, this.shape.size * 1.25);
+        const gradient = ctx.createRadialGradient(0, 0, this.shape.size * 0.8, 0, 0, this.shape.size * 1.25);
         gradient.addColorStop(0, "rgba(38, 121, 255, 0.7)");
-        gradient.addColorStop(0.25, "rgba(128, 64, 128, 0.7)");
+        gradient.addColorStop(0.75, "rgba(128, 64, 128, 0.7)");
         gradient.addColorStop(1, "rgba(255, 0, 0, 0.7)")
 
         ctx.beginPath();
