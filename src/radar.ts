@@ -33,11 +33,15 @@ const HEXAGON_DIRS = Object.freeze([
 
 export class Radar {
     readonly chart: kshoot.Chart;
+    readonly timing: kshoot.Timing;
+
     readonly shape: Shape;
     readonly stat: kshoot.tools.stat.Stat;
 
-    constructor(chart: kshoot.Chart) {
-        this.chart = chart;
+    constructor(args: {chart: kshoot.Chart, timing?: kshoot.Timing}) {
+        this.chart = args.chart;
+        this.timing = args.timing ?? this.chart.getTiming();
+
         this.shape = {
             width: 500, height: 450, size: 150,
         };

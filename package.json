@@ -1,6 +1,6 @@
 {
     "name": "kshoot-tools",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
     "files": [
         "/dist", "/res"
@@ -9,7 +9,7 @@
     "typings": "dist/index.d.ts",
     "type": "module",
     "bin": {
-        "kshoot": "dist/bn.js"
+        "kshoot": "dist/bin.js"
     },
     "scripts": {
         "prepare": "npm run build",

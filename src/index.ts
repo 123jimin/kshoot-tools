@@ -24,19 +24,24 @@ export class KShootChartContext {
     file_path = "";
     file_name = "";
     chart?: kshoot.Chart;
+    timing?: kshoot.Timing;
 
     constructor(context: KShootContext) {
         this.context = context;
     }
 
-    set(source_path: string, chart_data: string|Buffer) {
+    set(source_path: string, chart_data: string|Buffer): LoadedKShootChartContext {
         this.file_path = source_path;
         this.file_name = path.basename(source_path);
-        this.chart = kshoot.parse((typeof chart_data === 'string') ? chart_data : chart_data.toString('utf-8'));
+        
+        const chart = kshoot.parse((typeof chart_data === 'string') ? chart_data : chart_data.toString('utf-8'));
+        const timing = chart.getTiming();
+
+        return Object.assign(this, {chart, timing});
     }
 
-    async load(file_path: string) {
-        this.set(file_path, await fs.readFile(file_path));
+    async load(file_path: string): Promise<LoadedKShootChartContext> {
+        return this.set(file_path, await fs.readFile(file_path));
     }
 
     toString(): string {
@@ -49,6 +54,7 @@ export class KShootChartContext {
 
         return `
             ${this.toString()}
+            - Duration: ${(this.chart.getDuration()/1000).toFixed(3)} s
             - BPM: ${this.chart.meta.disp_bpm} (median: ${this.chart.getMedianBPM()})
             - notes: ${stat.notes} (${stat.chips} chips + ${stat.holds} holds)
             - max density: ${stat.max_density}
@@ -61,14 +67,16 @@ export class KShootChartContext {
     }
 }
 
+export type LoadedKShootChartContext = KShootChartContext & {chart: kshoot.Chart, timing: kshoot.Timing};
+
 export interface KShootContext {
     dir_path: string;
-    charts: (KShootChartContext & {chart: kshoot.Chart})[];
+    charts: LoadedKShootChartContext[];
 }
 
 export class KShootTools implements KShootContext {
     dir_path = "";
-    charts: (KShootChartContext & {chart: kshoot.Chart})[] = [];
+    charts: LoadedKShootChartContext[] = [];
     
     reset() {
         this.dir_path = "";
@@ -106,8 +114,7 @@ export class KShootTools implements KShootContext {
 
         await Promise.all(params.file_paths.map(async (file_path) => {
             const chart = new KShootChartContext(this);
-            await chart.load(file_path);
-            if(chart.chart) this.charts.push(chart as (KShootChartContext & {chart: kshoot.Chart}));
+            this.charts.push(await chart.load(file_path));
         }));
 
         this.charts.sort((ctx_a, ctx_b) => {
@@ -123,9 +130,7 @@ export class KShootTools implements KShootContext {
 
         for(const source_path in params.data) {
             const chart = new KShootChartContext(this);
-            chart.set(source_path, params.data[source_path]);
-
-            if(chart.chart) this.charts.push(chart as (KShootChartContext & {chart: kshoot.Chart}));
+            this.charts.push(chart.set(source_path, params.data[source_path]));
         }
     }
 
@@ -160,7 +165,11 @@ export class KShootTools implements KShootContext {
     }
     
     getRadars(): Radar[] {
-        return this.charts.map((chart_ctx) => new Radar(chart_ctx.chart));
+        return this.charts.map((chart_ctx) => new Radar(chart_ctx));
+    }
+
+    getRenderers(): Renderer[] {
+        return this.charts.map((chart_ctx) => new Renderer(chart_ctx));
     }
 
     async save(out_dir: string, data: (Buffer|string|null)[], pathMap?: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string) {
