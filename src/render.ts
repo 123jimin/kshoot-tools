@@ -77,7 +77,7 @@ export class Column {
         ctx.stroke();
     }
 
-    drawMeasures() {
+    drawMeasures(column_index: number) {
         const ctx = this.layers[LayerInd.Measure][1];
         ctx.clearRect(0, 0, this.width, this.height);
 
@@ -116,6 +116,16 @@ export class Column {
         }
         
         ctx.stroke();
+
+        ctx.fillStyle = 'rgb(0, 255, 0)';
+        ctx.textAlign = 'left';
+
+        const start_bpm_pulse = this.timing.bpm_by_pulse.nextLowerKey(this.range[0]) ?? 0n;
+        for(const [pulse, bpm_info] of this.timing.bpm_by_pulse.entries(start_bpm_pulse)) {
+            const y = this.height - Number((column_index === 0 && pulse < this.range[0] ? this.range[0] : pulse) - this.range[0])/5 - 0.5;
+            const bpm = bpm_info.bpm;
+            ctx.fillText(`${bpm === Math.floor(bpm) ? bpm.toString() : bpm.toFixed(2)}`, 88, y);
+        }
     }
     
     drawButtonNote(pulse: kshoot.Pulse, button: kshoot.ButtonObject) {
@@ -262,8 +272,8 @@ export class Column {
         }
     }
 
-    render(target: CanvasRenderingContext2D, x: number, y: number) {
-        this.drawMeasures();
+    render(column_index: number, target: CanvasRenderingContext2D, x: number, y: number) {
+        this.drawMeasures(column_index);
         this.drawButtonNotes();
         this.drawLaserNotes();
 
@@ -320,7 +330,7 @@ export class Renderer {
             const tick_end = tick_begin + pulses_per_column;
             column.reset([tick_begin, tick_end]);
 
-            column.render(ctx, i*column.width, 12);
+            column.render(i, ctx, i*column.width, 12);
         }
 
         return canvas.toBuffer();

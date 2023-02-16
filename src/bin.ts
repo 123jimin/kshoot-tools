@@ -26,6 +26,7 @@ parser_radar.add_argument('-o', '--out_dir', {type: parsePath, help: "save the r
 
 const parser_render = subparsers.add_parser('render', {help: "renders given chart(s) and saves image(s)"});
 parser_render.add_argument('-c', '--columns', {type: parseInt, help: "# of columns to draw"});
+parser_render.add_argument('--pulses_per_column', {type: BigInt, help: "# of KSON pulses per column"});
 parser_render.add_argument('-m', '--start_measure', {type: BigInt, help: "set the beginning point (with measure no.)"});
 parser_render.add_argument('-p', '--start_pulse', {type: BigInt, help: "set the beginning point (with KSON pulses)"});
 parser_render.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
@@ -63,6 +64,7 @@ const args = parser.parse_args();
             const renderers = kshoot_tools.getRenderers();
             await kshoot_tools.save(args.out_dir, await Promise.all(renderers.map((renderer => renderer.render({
                 start: args.start_measure ? renderer.timing.getMeasureInfoByIdx(args.start_measure-1n).pulse : args.start_pulse ?? 0n,
+                pulses_per_column: args.pulses_per_column,
                 max_columns: args.columns,
             })))));
             console.log(args.out_dir ? `Images saved under ${args.out_dir}` : "Images saved next to chart(s)");
