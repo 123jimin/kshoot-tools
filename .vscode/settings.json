@@ -11,6 +11,7 @@
         "subparsers",
         "testcase",
         "translit",
+        "tsumami",
         "Voltex"
     ]
 }

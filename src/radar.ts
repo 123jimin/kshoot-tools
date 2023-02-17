@@ -96,13 +96,13 @@ export class Radar {
     getRadarStat(): RadarStat {
         const stat = this.stat;
 
-        const bc_jacks = [1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y);
-        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y);
+        const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
 
         // TODO: find more accurate formulas
         return {
             notes: 454 + stat.chips + 0.12 * stat.holds + 0.04 * stat.hold_chains - 0.24 * stat.one_hand_notes,
-            peak: 12 + stat.max_density,
+            peak: 12 + stat.peak_note_density,
             tsumami: 125 + stat.slams + 1.8 * stat.moving_lasers + 0.6 * stat.moving_laser_chains,
             one_hand: 55 + stat.one_hand_notes,
             hand_trip: 55 + stat.wrong_side_notes,

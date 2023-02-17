@@ -56,12 +56,13 @@ export class KShootChartContext {
             ${this.toString()}
             - Duration: ${(this.chart.getDuration()/1000).toFixed(3)} s
             - BPM: ${this.chart.meta.disp_bpm} (median: ${this.chart.getMedianBPM()})
-            - notes: ${stat.notes} (${stat.chips} chips + ${stat.holds} holds)
-            - max density: ${stat.max_density}
+            - notes: ${stat.buttons} (${stat.chips} chips + ${stat.holds} holds)
+            - chains: ${stat.button_chains} (${stat.chips} chips + ${stat.hold_chains} holds)
+            - peak density: ${stat.peak_note_density}
             - lasers: ${stat.moving_lasers + stat.slams} (${stat.moving_lasers} moving lasers + ${stat.slams} slams)
             - one hand: ${stat.one_hand_notes}
             - hand trip: ${stat.wrong_side_notes}
-            - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4, 5].map((lane) => stat.by_lane[lane].jacks).reduce((x, y) => x+y)})
+            - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y)})
             - sofulan: ${stat.bpm_change_intensity.toFixed(1)} (${stat.bpm_changes} BPM changes)
         `.split('\n').map((line) => line.trim()).join('\n').trim();
     }
