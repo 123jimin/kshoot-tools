@@ -14,6 +14,22 @@ export interface RadarStat {
     tricky: number;
 }
 
+export function radarStatToString(stat: RadarStat, no_round = false): string {
+    const arr: string[] = [];
+    for(const k of (['notes', 'peak', 'tsumami', 'one_hand', 'hand_trip', 'tricky'] as const)) {
+        const value = stat[k];
+        arr.push(`${k}: ${no_round ? value.toFixed(3) : Math.round(value).toString()}`)
+    }
+
+    // TODO: remove these once corresponding values are filled in
+    arr.splice(3, 3);
+    arr.push("one_hand: (unknown)");
+    arr.push("hand_trip: (unknown)");
+    arr.push("tricky: (unknown)");
+
+    return `{${arr.join(', ')}}`;
+}
+
 export interface Shape {
     width: number;
     height: number;
@@ -90,23 +106,34 @@ export class Radar {
 
         ctx.stroke();
 
+        ctx.font = "72px ConcertOne";
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+        ctx.fillText(this.chart.difficulty_id.toUpperCase(), 0, 0);
+
+        ctx.font = "96px ConcertOne";
+        ctx.textBaseline = 'top';
+        ctx.fillText(this.chart.meta.level.toString().padStart(2, '0'), 0, -20);
+
         ctx.restore();
     }
 
     getRadarStat(): RadarStat {
         const stat = this.stat;
+        const duration = this.chart.getDuration()/1000;
 
-        const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
-        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        // const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        // const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
 
         // TODO: find more accurate formulas
         return {
-            notes: 454 + stat.chips + 0.12 * stat.holds + 0.04 * stat.hold_chains - 0.24 * stat.one_hand_notes,
-            peak: 12 + stat.peak_note_density,
-            tsumami: 125 + stat.slams + 1.8 * stat.moving_lasers + 0.6 * stat.moving_laser_chains,
-            one_hand: 55 + stat.one_hand_notes,
-            hand_trip: 55 + stat.wrong_side_notes,
-            tricky: 10 + 0.02 * stat.bpm_change_intensity + bc_jacks + 2.0 * adlr_jacks,
+            notes: (stat.chips + stat.holds) / duration,
+            peak: stat.peak_note_density,
+            tsumami: (stat.slant_laser_chains + stat.slams) / duration,
+            one_hand: 12,
+            hand_trip: 12,
+            tricky: 12,
         };
     }
 
@@ -114,12 +141,9 @@ export class Radar {
         const radar_stat = this.getRadarStat();
 
         // TODO: find proper normalization values
-        radar_stat.notes /= 1000 / 100;
-        radar_stat.peak /= 63 / 100;
-        radar_stat.tsumami /= 860 / 100;
-        radar_stat.one_hand /= 3;
-        radar_stat.hand_trip /= 3;
-        radar_stat.tricky /= 50 / 100;
+        radar_stat.notes = (16.663 * radar_stat.notes + 38.798) / 1.5;
+        radar_stat.peak = (2.1644 * radar_stat.peak + 42.113) / 1.5;
+        radar_stat.tsumami = (20 * radar_stat.tsumami + 18) / 1.5;
 
         for(const str_k in radar_stat) {
             const k = str_k as keyof RadarStat;
@@ -132,17 +156,7 @@ export class Radar {
     }
 
     toString(raw?: boolean) {
-        if(raw) {
-            const radar_stat = this.getRadarStat();
-            return `{notes: ${radar_stat.notes}, peak: ${radar_stat.peak}, tsumami: ${radar_stat.tsumami}, one_hand: ${radar_stat.one_hand}, hand_trip: ${radar_stat.hand_trip}, tricky: ${radar_stat.tricky}}`;
-        } else {
-            const radar_stat = this.getScaledRadarStat();
-            for(const k_str in radar_stat) {
-                const k = k_str as keyof RadarStat;
-                radar_stat[k] = Math.round(radar_stat[k]);
-            }
-            return `{notes: ${radar_stat.notes}, peak: ${radar_stat.peak}, tsumami: ${radar_stat.tsumami}, one_hand: ${radar_stat.one_hand}, hand_trip: ${radar_stat.hand_trip}, tricky: ${radar_stat.tricky}}`;
-        }
+        return radarStatToString(raw ? this.getRadarStat() : this.getScaledRadarStat(), raw);
     }
 
     renderRadar(ctx: CanvasRenderingContext2D) {

@@ -49,7 +49,7 @@ export class KShootChartContext {
         return `[Chart "${this.chart.meta.title.trim()}" (${this.chart.difficulty_id} ${this.chart.meta.level}) from "${this.file_name}"]`;
     }
 
-    getStatDescription(this: {chart: kshoot.Chart}): string {
+    getStatDescription(this: {chart: kshoot.Chart, timing: kshoot.Timing}): string {
         const stat: kshoot.tools.stat.Stat = kshoot.tools.stat.getStat(this.chart);
 
         return `
@@ -58,12 +58,12 @@ export class KShootChartContext {
             - BPM: ${this.chart.meta.disp_bpm} (median: ${this.chart.getMedianBPM()})
             - notes: ${stat.buttons} (${stat.chips} chips + ${stat.holds} holds)
             - chains: ${stat.button_chains} (${stat.chips} chips + ${stat.hold_chains} holds)
-            - peak density: ${stat.peak_note_density}
-            - lasers: ${stat.moving_lasers + stat.slams} (${stat.moving_lasers} moving lasers + ${stat.slams} slams)
+            - peak density: ${stat.peak_note_density} (measure ${this.timing.getMeasureInfoByPulse(stat.peak_note_density_range[0]).idx + 1n})
+            - lasers: ${stat.slant_laser_chains + stat.slams} (${stat.slant_laser_chains} slants + ${stat.slams} slams)
             - one hand: ${stat.one_hand_notes}
             - hand trip: ${stat.wrong_side_notes}
             - jacks: ${stat.jacks} (BC: ${[1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y)}, ADLR: ${[0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y)})
-            - sofulan: ${stat.bpm_change_intensity.toFixed(1)} (${stat.bpm_changes} BPM changes)
+            - sofulan: ${stat.bpm_differences.toFixed(1)} (${stat.bpm_changes} BPM changes)
         `.split('\n').map((line) => line.trim()).join('\n').trim();
     }
 }
