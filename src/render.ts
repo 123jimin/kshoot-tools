@@ -300,6 +300,42 @@ export class Renderer {
         this.timing = args.timing ?? this.chart.getTiming();
     }
 
+    chooseStart(columns: number, pulses_per_column: kshoot.Pulse): kshoot.Pulse {
+        const visible_pulses: kshoot.Pulse = pulses_per_column * BigInt(columns);
+        const [chart_begin, chart_end] = [this.chart.getFirstNotePulse(), this.chart.getLastNotePulse()];
+
+        // Show the entire chart if possible
+        const chart_begin_measure = this.timing.getMeasureInfoByPulse(chart_begin);
+        if(chart_end <= visible_pulses) return 0n;
+        if(chart_end <= chart_begin_measure.pulse + visible_pulses) return chart_begin_measure.pulse;
+
+        const stat = kshoot.tools.stat.getButtonOnlyStat(this.chart, this.timing);
+        const [highlight_begin, highlight_end] = stat.peak_note_density_range;
+        
+        // Put the highlight in a later part of the visible chart
+        let init_candidate = (highlight_begin + highlight_end) / 2n - visible_pulses / 2n;
+        if(visible_pulses > highlight_end - highlight_begin) init_candidate -= (visible_pulses - (highlight_end - highlight_begin))/3n;
+        let candidate = this.timing.getMeasureInfoByPulse(init_candidate >= 0n ? init_candidate : 0n);
+
+        if(candidate.pulse <= chart_begin && chart_end <= candidate.pulse + visible_pulses) {
+            return candidate.pulse;
+        }
+
+        while(candidate.pulse > 0n && candidate.pulse + visible_pulses > chart_end) {
+            const prev_candidate = this.timing.getMeasureInfoByIdx(candidate.idx - 1n);
+            if(prev_candidate.pulse + visible_pulses <= chart_end) break;
+            candidate = prev_candidate;
+        }
+
+        while(candidate.pulse < chart_begin) {
+            const next_candidate = this.timing.getMeasureInfoByIdx(candidate.idx + 1n);
+            if(chart_begin < next_candidate.pulse) break;
+            candidate = next_candidate;
+        }
+
+        return candidate.pulse;
+    }
+
     renderButton(ctx: CanvasRenderingContext2D, length: number) {
         if(length === 0) {
             ctx.beginPath();
@@ -314,6 +350,10 @@ export class Renderer {
     async render(params: Partial<Params>): Promise<Buffer> {
         const max_columns = params.max_columns ?? 9;
         const pulses_per_column = params.pulses_per_column ?? kshoot.PULSES_PER_WHOLE * 4n;
+
+        if(params.start == null) {
+            params.start = this.chooseStart(max_columns, pulses_per_column);
+        }
 
         const canvas = createCanvas(max_columns*131, Math.ceil(Number(pulses_per_column)/5) + 20);
         const ctx = canvas.getContext('2d');

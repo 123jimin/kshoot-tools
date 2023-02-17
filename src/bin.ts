@@ -63,7 +63,7 @@ const args = parser.parse_args();
         case 'render': {
             const renderers = kshoot_tools.getRenderers();
             await kshoot_tools.save(args.out_dir, await Promise.all(renderers.map((renderer => renderer.render({
-                start: args.start_measure ? renderer.timing.getMeasureInfoByIdx(args.start_measure-1n).pulse : args.start_pulse ?? 0n,
+                start: args.start_measure ? renderer.timing.getMeasureInfoByIdx(args.start_measure-1n).pulse : args.start_pulse,
                 pulses_per_column: args.pulses_per_column,
                 max_columns: args.columns,
             })))));
