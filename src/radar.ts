@@ -16,16 +16,10 @@ export interface RadarStat {
 
 export function radarStatToString(stat: RadarStat, no_round = false): string {
     const arr: string[] = [];
-    for(const k of (['notes', 'peak', 'tsumami', 'one_hand', 'hand_trip', 'tricky'] as const)) {
+    for(const k of (['notes', 'peak', 'tsumami', 'tricky', 'hand_trip', 'one_hand'] as const)) {
         const value = stat[k];
         arr.push(`${k}: ${no_round ? value.toFixed(3) : Math.round(value).toString()}`)
     }
-
-    // TODO: remove these once corresponding values are filled in
-    arr.splice(3, 3);
-    arr.push("one_hand: (unknown)");
-    arr.push("hand_trip: (unknown)");
-    arr.push("tricky: (unknown)");
 
     return `{${arr.join(', ')}}`;
 }
@@ -123,27 +117,29 @@ export class Radar {
         const stat = this.stat;
         const duration = this.chart.getDuration()/1000;
 
-        // const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
-        // const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
 
-        // TODO: find more accurate formulas
+        // TODO: find more accurate formulas for TRICKY and other values
         return {
             notes: (stat.chips + stat.holds) / duration,
             peak: stat.peak_note_density,
             tsumami: (stat.slant_laser_chains + stat.slams) / duration,
-            one_hand: 12,
-            hand_trip: 12,
-            tricky: 12,
+            one_hand: stat.one_hand_notes / duration,
+            hand_trip: stat.wrong_side_notes / duration,
+            tricky: (bc_jacks + 2*adlr_jacks + 4000*stat.bpm_inverse_differences) / duration,
         };
     }
 
     getScaledRadarStat(): RadarStat {
         const radar_stat = this.getRadarStat();
 
-        // TODO: find proper normalization values
         radar_stat.notes = (16.663 * radar_stat.notes + 38.798) / 1.5;
         radar_stat.peak = (2.1644 * radar_stat.peak + 42.113) / 1.5;
         radar_stat.tsumami = (20 * radar_stat.tsumami + 18) / 1.5;
+        radar_stat.one_hand = (64.817 * radar_stat.one_hand) / 1.5 + 10;
+        radar_stat.hand_trip = (168.25 * radar_stat.hand_trip) / 1.5 + 10;
+        radar_stat.tricky = (177.18 * radar_stat.tricky) / 1.5 + 10;
 
         for(const str_k in radar_stat) {
             const k = str_k as keyof RadarStat;
