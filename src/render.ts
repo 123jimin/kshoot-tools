@@ -186,6 +186,10 @@ export class Column {
     }
 
     drawLaserNote(pulse: kshoot.Pulse, laser: kshoot.LaserObject) {
+        const LASER_WIDTH = 9;
+        const SLAM_HEIGHT = 6;
+        const END_HEIGHT = 4;
+
         const ctx = this.layers[LayerInd.Laser][1];
         const y = this.height - Number(pulse - this.range[0])/5 - 1;
         const color = ["rgba(0, 143, 180, 0.8)", "rgba(240, 8, 175, 0.8)"][laser.lane];
@@ -211,47 +215,57 @@ export class Column {
             ctx.translate(pos_v0, 0);
             ctx.beginPath();
             ctx.fillStyle = color;
-            ctx.fillRect(0, 0, 9, 5);
+            ctx.fillRect(0, 0, LASER_WIDTH, 5);
             ctx.fill();
             ctx.fillStyle = "rgba(255, 255, 255, 1.0)";
-            ctx.fillRect(1, 0, 7, 5);
+            ctx.fillRect(1, 0, LASER_WIDTH-2, 5);
             ctx.fill();
             ctx.restore();
         }
 
+        // Coordinates for main slant
+        const sx = pos_v1; let sy = 0;
+
+        // Start drawing the laser
         ctx.beginPath();
         ctx.fillStyle = color;
 
-        let slam_offset = 0;
+        // Draw slam head
         if(is_slam) {
-            slam_offset = 6;
+            sy -= SLAM_HEIGHT;
             
             if(laser.v[0] < laser.v[1]) {
-                ctx.moveTo(pos_v1 + 9, -slam_offset);
-                ctx.lineTo(pos_v1 + 9, 0);
+                ctx.moveTo(sx + LASER_WIDTH, sy);
+                ctx.lineTo(pos_v1 + LASER_WIDTH, 0);
                 ctx.lineTo(pos_v0, 0);
-                ctx.lineTo(pos_v0, -slam_offset);
-                ctx.lineTo(pos_v1, -slam_offset);
+                ctx.lineTo(pos_v0, sy);
             } else {
-                ctx.moveTo(pos_v1 + 9, -slam_offset);
-                ctx.lineTo(pos_v0 + 9, -slam_offset);
-                ctx.lineTo(pos_v0 + 9, 0);
+                ctx.moveTo(sx + LASER_WIDTH, sy);
+                ctx.lineTo(pos_v0 + LASER_WIDTH, sy);
+                ctx.lineTo(pos_v0 + LASER_WIDTH, 0);
                 ctx.lineTo(pos_v1, 0);
-                ctx.lineTo(pos_v1, -slam_offset);
             }
-        } else {
-            ctx.moveTo(pos_v1, 0);
         }
 
-        
-        if(height === 0) {
-            ctx.lineTo(pos_v1, -slam_offset-4);
-            ctx.lineTo(pos_v1 + 9, -slam_offset-4);
-            ctx.lineTo(pos_v1 + 9, -slam_offset);
+        ctx.lineTo(sx, sy);
+        const [ex, ey] = [pos_ve, height <= 0 ? sy-END_HEIGHT : -height];
+
+        // Draw laser body ((sx, sy) - (ex, ey))
+        if(sx === ex || laser.curve[0] === laser.curve[1]) {
+            // Straight laser
+            ctx.lineTo(ex, ey);
+            ctx.lineTo(ex + LASER_WIDTH, ey);
+            ctx.lineTo(sx + LASER_WIDTH, sy);
         } else {
-            ctx.lineTo(pos_ve, -height);
-            ctx.lineTo(pos_ve + 9, -height);
-            ctx.lineTo(pos_v1 + 9, -slam_offset);
+            // Curved laser
+            // Quadratic bezier control point
+            const [qx, qy] = [sx + (ex - sx) * laser.curve[0], sy + (ey - sy) * laser.curve[1]];
+            // Convert it to the cubic bezier control point
+            const [c1x, c1y] = [sx + (2/3)*(qx - sx), sy + (2/3)*(qy - sy)];
+            const [c2x, c2y] = [ex + (2/3)*(qx - ex), ey + (2/3)*(qy - ey)];
+            ctx.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
+            ctx.lineTo(ex + LASER_WIDTH, ey);
+            ctx.bezierCurveTo(c2x + LASER_WIDTH, c2y, c1x + LASER_WIDTH, c1y, sx + LASER_WIDTH, sy);
         }
 
         ctx.closePath();
