@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 import {ArgumentParser} from 'argparse';
 
-import {KShootTools, radar} from "./index.js";
+import {KShootTools} from "./index.js";
 
 function parsePath(path_str: string): string {
     if(path_str === "") return "";
@@ -17,6 +17,7 @@ const parser = new ArgumentParser({
 
 parser.add_argument('path', {type: parsePath, help: "path to the .ksh, .kson, .zip, or a directory"});
 parser.add_argument('--stat', {action: 'store_true', help: "print stats"});
+parser.add_argument('-x', '--extract', {action: 'store_true', help: "set this flag if the provided file is an .zip"});
 
 const subparsers = parser.add_subparsers({title: "commands", dest: "command"});
 
@@ -31,11 +32,19 @@ parser_render.add_argument('-m', '--start_measure', {type: BigInt, help: "set th
 parser_render.add_argument('-p', '--start_pulse', {type: BigInt, help: "set the beginning point (with KSON pulses)"});
 parser_render.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
 
+const parser_convert = subparsers.add_parser('convert', {help: "converts the format of the chart(s)"});
+parser_convert.add_argument('-f', '--format', {choices: ['ksh', 'kson'], required: true, help: "which format to convert the chart(s) into"});
+parser_convert.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
+
 const args = parser.parse_args();
 
 (async() => {
     const kshoot_tools = new KShootTools();
-    await kshoot_tools.load({type: 'path', file_or_dir_path: args.path});
+    if(args.extract) {
+        await kshoot_tools.load({type: 'archive', file_path: args.path as string});
+    } else {
+        await kshoot_tools.load({type: 'path', file_or_dir_path: args.path});
+    }
 
     console.log(kshoot_tools.getSummary());
 
@@ -55,7 +64,7 @@ const args = parser.parse_args();
             }
 
             if(args.out_dir != null) {
-                await kshoot_tools.save(args.out_dir, await Promise.all(radars.map(radar => radar.render({}))));
+                await kshoot_tools.save(args.out_dir, await Promise.all(radars.map(radar => radar.render({}))), 'png');
                 console.log(args.out_dir ? `Images saved under ${args.out_dir}` : "Images saved next to chart(s)");
             }
             break;
@@ -66,8 +75,16 @@ const args = parser.parse_args();
                 start: args.start_measure ? renderer.timing.getMeasureInfoByIdx(args.start_measure-1n).pulse : args.start_pulse,
                 pulses_per_column: args.pulses_per_column,
                 max_columns: args.columns,
-            })))));
+            })))), 'png');
             console.log(args.out_dir ? `Images saved under ${args.out_dir}` : "Images saved next to chart(s)");
+            break;
+        }
+        case 'convert': {
+            const format: 'kson'|'ksh' = args.format;
+            const exported = kshoot_tools.charts.map((chart_ctx) => {
+                return chart_ctx.chart.export(format);
+            });
+            await kshoot_tools.save(args.out_dir, exported, format);
             break;
         }
     }

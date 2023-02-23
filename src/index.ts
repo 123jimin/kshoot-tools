@@ -1,10 +1,12 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 
+import AdmZip from 'adm-zip';
+
 import * as kshoot from 'kshoot';
 export * as kshoot from 'kshoot';
 
-import {Radar, Params as RadarParams} from "./radar.js";
+import {Radar} from "./radar.js";
 export * as radar from "./radar.js";
 
 import {Renderer, Params as RendererParams} from "./render.js";
@@ -12,10 +14,11 @@ export * as render from "./render.js";
 
 export type LoadPathParams = { type: 'path', file_or_dir_path: string };
 export type LoadFileParams = { type: 'files', file_paths: string[] };
+export type LoadArchiveParams = { type: 'archive', file_path?: string, data?: Buffer };
 export type SetDataParams = { type: 'set', data: Record<string, string|Buffer> }
 export type LoadDirectoryParams = { type: 'directory', dir_path: string };
 
-export type LoadParams = LoadPathParams | LoadFileParams | SetDataParams | LoadDirectoryParams;
+export type LoadParams = LoadPathParams | LoadFileParams | LoadArchiveParams | SetDataParams | LoadDirectoryParams;
 
 export type RenderParams = RendererParams & { save_to_file?: boolean, out_dir?: string };
 
@@ -77,10 +80,14 @@ export interface KShootContext {
 
 export class KShootTools implements KShootContext {
     dir_path = "";
+    zip_archive: AdmZip|null = null;
+
     charts: LoadedKShootChartContext[] = [];
     
     reset() {
         this.dir_path = "";
+        this.zip_archive = null;
+
         this.charts = [];
     }
 
@@ -93,9 +100,19 @@ export class KShootTools implements KShootContext {
                 break;
             }
             case 'files': await this.loadFiles(params); break;
+            case 'archive': await this.loadArchiveFile(params); break;
             case 'set': this.setData(params); break;
             case 'directory': await this.loadDirectory(params); break;
         }
+    }
+
+    sort() {
+        this.charts.sort((ctx_a, ctx_b) => {
+            if(ctx_a.chart.meta.difficulty !== ctx_b.chart.meta.difficulty) {
+                return ctx_a.chart.meta.difficulty < ctx_b.chart.meta.difficulty ? -1 : +1;
+            }
+            return ctx_a.chart.meta.level - ctx_b.chart.meta.level;
+        });
     }
 
     async loadFiles(params: LoadFileParams) {
@@ -118,12 +135,30 @@ export class KShootTools implements KShootContext {
             this.charts.push(await chart.load(file_path));
         }));
 
-        this.charts.sort((ctx_a, ctx_b) => {
-            if(ctx_a.chart.meta.difficulty !== ctx_b.chart.meta.difficulty) {
-                return ctx_a.chart.meta.difficulty < ctx_b.chart.meta.difficulty ? -1 : +1;
+        this.sort();
+    }
+
+    async loadArchiveFile(params: LoadArchiveParams) {
+        this.reset();
+
+        let zip_archive: AdmZip;
+        
+        if(params.data) zip_archive = new AdmZip(params.data, {readEntries: true});
+        else if(params.file_path) zip_archive = new AdmZip(params.file_path, {readEntries: true});
+        else return;
+        
+        this.zip_archive = zip_archive;
+
+        const entries = zip_archive.getEntries();
+        for(const entry of entries) {
+            if(entry.isDirectory) continue;
+            if(entry.entryName.endsWith('.ksh') || entry.entryName.endsWith('.kson')) {
+                const chart = new KShootChartContext(this);
+                this.charts.push(chart.set(entry.entryName, entry.getData()));
             }
-            return ctx_a.chart.meta.level - ctx_b.chart.meta.level;
-        });
+        }
+
+        this.sort();
     }
 
     setData(params: SetDataParams) {
@@ -173,8 +208,11 @@ export class KShootTools implements KShootContext {
         return this.charts.map((chart_ctx) => new Renderer(chart_ctx));
     }
 
-    async save(out_dir: string, data: (Buffer|string|null)[], pathMap?: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string) {
-        if(!pathMap) pathMap = (chart_ctx) => `${chart_ctx.file_name}.png`;
+    async save(out_dir: string, data: (Buffer|string|null)[], extension: string): Promise<void>;
+    async save(out_dir: string, data: (Buffer|string|null)[], pathMap: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string): Promise<void>;
+    async save(out_dir: string, data: (Buffer|string|null)[], pathMapOrExt: string|((chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string)): Promise<void> {
+        const pathMap: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string =
+            (typeof pathMapOrExt === 'string') ? (chart_ctx) => `${chart_ctx.file_name}.${pathMapOrExt}` : pathMapOrExt;
 
         await Promise.all(data.map(async (data, ind) => {
             if(data == null || !pathMap) return;

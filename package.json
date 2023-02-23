@@ -3,7 +3,8 @@
     "version": "0.0.3",
     "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
     "files": [
-        "/dist", "/res"
+        "/dist",
+        "/res"
     ],
     "main": "dist/index.js",
     "typings": "dist/index.d.ts",
@@ -37,6 +38,7 @@
     },
     "homepage": "https://github.com/123jimin/kshoot-tools#readme",
     "devDependencies": {
+        "@types/adm-zip": "^0.5.0",
         "@types/argparse": "^2.0.10",
         "@types/node": "^18.13.0",
         "@typescript-eslint/eslint-plugin": "^5.50.0",
