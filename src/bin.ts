@@ -2,7 +2,7 @@ import * as path from 'node:path';
 
 import {ArgumentParser} from 'argparse';
 
-import {KShootTools} from "./index.js";
+import {KShootTools, npy} from "./index.js";
 
 function parsePath(path_str: string): string {
     if(path_str === "") return "";
@@ -33,7 +33,7 @@ parser_render.add_argument('-p', '--start_pulse', {type: BigInt, help: "set the 
 parser_render.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
 
 const parser_convert = subparsers.add_parser('convert', {help: "converts the format of the chart(s)"});
-parser_convert.add_argument('-f', '--format', {choices: ['ksh', 'kson'], required: true, help: "which format to convert the chart(s) into"});
+parser_convert.add_argument('format', {choices: ['ksh', 'kson', 'npy'], help: "which format to convert the chart(s) into"});
 parser_convert.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
 
 const args = parser.parse_args();
@@ -80,9 +80,14 @@ const args = parser.parse_args();
             break;
         }
         case 'convert': {
-            const format: 'kson'|'ksh' = args.format;
-            const exported = kshoot_tools.charts.map((chart_ctx) => {
-                return chart_ctx.chart.export(format);
+            const format: 'kson'|'ksh'|'npy' = args.format;
+            const exported: (string|Buffer)[] = kshoot_tools.charts.map((chart_ctx) => {
+                switch(format) {
+                    case 'npy':
+                        return npy.fromChart(chart_ctx.chart).export();
+                    default:
+                        return chart_ctx.chart.export(format);
+                }
             });
             await kshoot_tools.save(args.out_dir, exported, format);
             break;

@@ -12,6 +12,8 @@ export * as radar from "./radar.js";
 import {Renderer, Params as RendererParams} from "./render.js";
 export * as render from "./render.js";
 
+export * as npy from "./npy.js";
+
 export type LoadPathParams = { type: 'path', file_or_dir_path: string };
 export type LoadFileParams = { type: 'files', file_paths: string[] };
 export type LoadArchiveParams = { type: 'archive', file_path?: string, data?: Buffer };
