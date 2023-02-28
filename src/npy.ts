@@ -36,6 +36,8 @@ export class NumpyChart {
     }
 
     setChart(chart: kshoot.Chart) {
+        const MS_PER_ROW = 1000 / this.resolution;
+
         this.timing = chart.getTiming();
         const last_note_ms = this.getTimeByPulse(chart.getLastNotePulse());
 
@@ -47,7 +49,7 @@ export class NumpyChart {
             const note_start_ms = this.getTimeByPulse(pulse);
             for(const note of notes) {
                 let note_end_ms = note.length === 0n ? note_start_ms : this.getTimeByPulse(pulse + note.length);
-                if(note_end_ms < note_start_ms + 1000 / this.resolution) note_end_ms = note_start_ms + 1000 / this.resolution;
+                if(note_end_ms < note_start_ms + MS_PER_ROW) note_end_ms = note_start_ms + MS_PER_ROW;
                 this.setInterval(note.lane, note_start_ms, note_end_ms);
             }
         }
@@ -69,11 +71,11 @@ export class NumpyChart {
                 const [pulse_len, last_data] = last_entry;
                 let section_end_ms = this.getTimeByPulse(section_pulse + pulse_len);
                 if(last_data[0][0] !== last_data[0][1]) {
-                    section_end_ms += 1000 / this.resolution;
+                    section_end_ms += MS_PER_ROW;
                 }
                 const section_end_ind = Math.floor((section_end_ms * this.resolution) / 1000);
 
-                this.setInterval(section_ind, section_start_ms, section_end_ms);
+                this.setInterval(section_ind, section_start_ms - MS_PER_ROW, section_end_ms + MS_PER_ROW);
                 const it = section[Symbol.iterator]();
                 let [curr_pulse, curr_point]: [kshoot.Pulse, kshoot.kson.GraphValue] = it.next().value;
                 let next_entry: [kshoot.Pulse, kshoot.kson.GraphValue]|null = it.next().value;
@@ -81,7 +83,7 @@ export class NumpyChart {
                 let curr_ms = this.getTimeByPulse(section_pulse+curr_pulse);
                 let next_ms = next_entry == null ? null : this.getTimeByPulse(section_pulse+next_entry[0]);
 
-                for(let i=section_start_ind; i<=section_end_ind; ++i) {
+                for(let i=section_start_ind-1; i<=section_end_ind+1; ++i) {
                     const ms = (i * 1000) / this.resolution;
                     if(ms < curr_ms) {
                         this.data[COLUMN_SIZE*i + value_ind] = posToFloat(curr_point[0]);
