@@ -4,6 +4,7 @@ const NUMPY_HEADER = Buffer.from([0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59, 0x01, 0x00
 const COLUMN_SIZE = 10;
 
 export class NumpyChart {
+    offset = 0; // Note: always should be non-negative
     resolution = 60;
     timing: Readonly<kshoot.Timing> = new kshoot.Timing(kshoot.kson.schema.BeatInfo.parse({}));
     data: Float32Array = new Float32Array();
@@ -30,18 +31,22 @@ export class NumpyChart {
         }
     }
 
+    getTimeByPulse(pulse: kshoot.Pulse): number {
+        return this.offset + this.timing.getTimeByPulse(pulse);
+    }
+
     setChart(chart: kshoot.Chart) {
         this.timing = chart.getTiming();
-        const last_note_ms = this.timing.getTimeByPulse(chart.getLastNotePulse());
+        const last_note_ms = this.getTimeByPulse(chart.getLastNotePulse());
 
         this._length = Math.floor((last_note_ms*this.resolution)/1000) + 2;
         this.data = new Float32Array(this._length*COLUMN_SIZE);
 
         // Export notes
         for(const [pulse, notes] of chart.buttonNotes()) {
-            const note_start_ms = this.timing.getTimeByPulse(pulse);
+            const note_start_ms = this.getTimeByPulse(pulse);
             for(const note of notes) {
-                let note_end_ms = note.length === 0n ? note_start_ms : this.timing.getTimeByPulse(pulse + note.length);
+                let note_end_ms = note.length === 0n ? note_start_ms : this.getTimeByPulse(pulse + note.length);
                 if(note_end_ms < note_start_ms + 1000 / this.resolution) note_end_ms = note_start_ms + 1000 / this.resolution;
                 this.setInterval(note.lane, note_start_ms, note_end_ms);
             }
@@ -53,7 +58,7 @@ export class NumpyChart {
             const value_ind = 7 + lane*2;
             for(const [section_pulse, section, section_width] of chart.note.laser[lane]) {
                 if(section.size === 0) continue;
-                const section_start_ms = this.timing.getTimeByPulse(section_pulse);
+                const section_start_ms = this.getTimeByPulse(section_pulse);
                 const section_start_ind = Math.floor((section_start_ms * this.resolution) / 1000);
 
                 const last_entry = section.nextLowerPair(void 0);
@@ -62,7 +67,7 @@ export class NumpyChart {
                 const posToFloat = (pos: number): number => 2*section_width*(pos-0.5);
 
                 const [pulse_len, last_data] = last_entry;
-                let section_end_ms = this.timing.getTimeByPulse(section_pulse + pulse_len);
+                let section_end_ms = this.getTimeByPulse(section_pulse + pulse_len);
                 if(last_data[0][0] !== last_data[0][1]) {
                     section_end_ms += 1000 / this.resolution;
                 }
@@ -73,8 +78,8 @@ export class NumpyChart {
                 let [curr_pulse, curr_point]: [kshoot.Pulse, kshoot.kson.GraphValue] = it.next().value;
                 let next_entry: [kshoot.Pulse, kshoot.kson.GraphValue]|null = it.next().value;
 
-                let curr_ms = this.timing.getTimeByPulse(section_pulse+curr_pulse);
-                let next_ms = next_entry == null ? null : this.timing.getTimeByPulse(section_pulse+next_entry[0]);
+                let curr_ms = this.getTimeByPulse(section_pulse+curr_pulse);
+                let next_ms = next_entry == null ? null : this.getTimeByPulse(section_pulse+next_entry[0]);
 
                 for(let i=section_start_ind; i<=section_end_ind; ++i) {
                     const ms = (i * 1000) / this.resolution;
@@ -88,7 +93,7 @@ export class NumpyChart {
                         curr_ms = next_ms;
 
                         next_entry = it.next().value;
-                        next_ms = next_entry == null ? null : this.timing.getTimeByPulse(section_pulse+next_entry[0]);
+                        next_ms = next_entry == null ? null : this.getTimeByPulse(section_pulse+next_entry[0]);
                     }
                     
                     if(next_entry == null || next_ms == null) {
