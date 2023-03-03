@@ -51,6 +51,7 @@
     "dependencies": {
         "adm-zip": "^0.5.10",
         "argparse": "^2.0.1",
+        "audio-decode": "^2.0.2",
         "canvas": "^2.11.0",
         "iconv-lite": "^0.6.3",
         "kshoot": "123jimin/kshoot.js"
