@@ -55,6 +55,6 @@
         "canvas": "^2.11.0",
         "dsp.js": "^1.0.1",
         "iconv-lite": "^0.6.3",
-        "kshoot": "123jimin/kshoot.js"
+        "kshoot": "^0.1.0"
     }
 }
