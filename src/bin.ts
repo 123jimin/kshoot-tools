@@ -1,8 +1,10 @@
+#!/usr/bin/env node
+
 import * as path from 'node:path';
 
 import {ArgumentParser} from 'argparse';
 
-import {KShootTools, npy} from "./index.js";
+import {KShootTools, computeOffset, npy} from "./index.js";
 
 function parsePath(path_str: string): string {
     if(path_str === "") return "";
@@ -35,6 +37,8 @@ parser_render.add_argument('-o', '--out_dir', {type: parsePath, help: "output di
 const parser_convert = subparsers.add_parser('convert', {help: "converts the format of the chart(s)"});
 parser_convert.add_argument('format', {choices: ['ksh', 'kson', 'npy'], help: "which format to convert the chart(s) into"});
 parser_convert.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
+
+const parser_sync = subparsers.add_parser('sync', {help: "calculate the proper offset for the chart(s)"});
 
 const args = parser.parse_args();
 
@@ -90,6 +94,19 @@ const args = parser.parse_args();
                 }
             });
             await kshoot_tools.save(args.out_dir, exported, format);
+            break;
+        }
+        case 'sync': {
+            await Promise.all(kshoot_tools.charts.map(async (chart_ctx) => {
+                const offset = await computeOffset(chart_ctx);
+                if(offset == null) {
+                    console.log(`${chart_ctx.toString()}: can't compute offset`);
+                } else {
+                    const delta = Math.round(offset - chart_ctx.chart.audio.bgm.offset);
+                    const delta_str = delta < 0 ? delta.toString() : '+' + delta.toString();
+                    console.log(`${chart_ctx.toString()}: ${chart_ctx.chart.audio.bgm.offset} => ${offset} (${delta_str} ms)`);
+                }
+            }));
             break;
         }
     }

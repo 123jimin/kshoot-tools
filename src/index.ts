@@ -14,6 +14,8 @@ export * as render from "./render.js";
 
 export * as npy from "./npy.js";
 
+export {OffsetComputer, computeOffset} from "./offset-computer.js";
+
 export type LoadPathParams = { type: 'path', file_or_dir_path: string };
 export type LoadFileParams = { type: 'files', file_paths: string[] };
 export type LoadArchiveParams = { type: 'archive', file_path?: string, data?: Buffer };
@@ -49,6 +51,10 @@ export class KShootChartContext {
         return this.set(file_path, await fs.readFile(file_path));
     }
 
+    async resolve(res_path: string): Promise<Buffer|null> {
+        return this.context.resolve(this.file_path, res_path);
+    }
+
     toString(): string {
         if(!this.chart) return `[Invalid chart from "${this.file_name}"]`;
         return `[Chart "${this.chart.meta.title.trim()}" (${this.chart.difficulty_id} ${this.chart.meta.level}) from "${this.file_name}"]`;
@@ -78,6 +84,8 @@ export type LoadedKShootChartContext = KShootChartContext & {chart: kshoot.Chart
 export interface KShootContext {
     dir_path: string;
     charts: LoadedKShootChartContext[];
+
+    resolve: (chart_path: string, res_path: string) => Promise<Buffer|null>;
 }
 
 export class KShootTools implements KShootContext {
@@ -106,6 +114,21 @@ export class KShootTools implements KShootContext {
             case 'set': this.setData(params); break;
             case 'directory': await this.loadDirectory(params); break;
         }
+    }
+
+    async resolve(chart_path: string, res_path: string): Promise<Buffer|null> {
+        if(this.zip_archive) {
+            // TODO
+            return null;
+        }
+        
+        res_path = path.join(path.dirname(chart_path), res_path);
+
+        // Check whether the resource is located outside of the chart folder.
+        const relative_res_path = path.relative(this.dir_path, res_path);
+        if(!relative_res_path || relative_res_path.startsWith('..') || path.isAbsolute(relative_res_path)) return null;
+
+        return await fs.readFile(res_path);
     }
 
     sort() {
