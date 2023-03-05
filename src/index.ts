@@ -14,7 +14,7 @@ export * as render from "./render.js";
 
 export * as npy from "./npy.js";
 
-export {OffsetComputer, computeOffset} from "./offset-computer.js";
+export {OffsetComputer, CrossCorrelation, computeOffset, computeCrossCorrelation} from "./offset-computer.js";
 
 export type LoadPathParams = { type: 'path', file_or_dir_path: string };
 export type LoadFileParams = { type: 'files', file_paths: string[] };
@@ -118,10 +118,13 @@ export class KShootTools implements KShootContext {
 
     async resolve(chart_path: string, res_path: string): Promise<Buffer|null> {
         if(this.zip_archive) {
-            // TODO
-            return null;
+            res_path = path.posix.join(path.posix.dirname(chart_path), res_path);
+            const entry = this.zip_archive.getEntry(res_path);
+            if(!entry) return null;
+
+            return entry.getData();
         }
-        
+
         res_path = path.join(path.dirname(chart_path), res_path);
 
         // Check whether the resource is located outside of the chart folder.
@@ -211,7 +214,7 @@ export class KShootTools implements KShootContext {
 
     getSummary(): string {
         const lines = [
-            `${this.charts.length} chart${this.charts.length === 1 ? '' : 's'} from "${this.dir_path}"`
+            `${this.charts.length} chart${this.charts.length === 1 ? '' : 's'} from "${this.zip_archive ? 'a zip archive' : this.dir_path}"`
         ];
         for(const chart_ctx of this.charts) lines.push(`- ${chart_ctx.toString()}`); 
         return lines.join('\n');

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import {ArgumentParser} from 'argparse';
 
-import {KShootTools, computeOffset, npy} from "./index.js";
+import {KShootTools, computeCrossCorrelation, npy} from "./index.js";
 
 function parsePath(path_str: string): string {
     if(path_str === "") return "";
@@ -39,6 +39,7 @@ parser_convert.add_argument('format', {choices: ['ksh', 'kson', 'npy'], help: "w
 parser_convert.add_argument('-o', '--out_dir', {type: parsePath, help: "output directory (next to the charts if omitted)"});
 
 const parser_sync = subparsers.add_parser('sync', {help: "calculate the proper offset for the chart(s)"});
+parser_sync.add_argument('-v', '--verbose', {action: 'store_true', help: "print detailed information"});
 
 const args = parser.parse_args();
 
@@ -98,13 +99,22 @@ const args = parser.parse_args();
         }
         case 'sync': {
             await Promise.all(kshoot_tools.charts.map(async (chart_ctx) => {
-                const offset = await computeOffset(chart_ctx);
-                if(offset == null) {
+                const corr = await computeCrossCorrelation(chart_ctx);
+                if(corr == null) {
                     console.log(`${chart_ctx.toString()}: can't compute offset`);
                 } else {
-                    const delta = Math.round(offset - chart_ctx.chart.audio.bgm.offset);
+                    const delta = corr.bestOffset();
                     const delta_str = delta < 0 ? delta.toString() : '+' + delta.toString();
-                    console.log(`${chart_ctx.toString()}: ${chart_ctx.chart.audio.bgm.offset} => ${offset} (${delta_str} ms)`);
+
+                    const new_offset = chart_ctx.chart.audio.bgm.offset + delta;
+                    console.log(`${chart_ctx.toString()}: ${chart_ctx.chart.audio.bgm.offset} => ${new_offset} (${delta_str} ms)`);
+
+                    if(args.verbose) {
+                        const peaks = [...corr.peaks()].sort((x, y) => y[1] - x[1]).slice(0, 16).sort((x, y) => x[0] - y[0]);
+                        for(const [offset, value] of peaks) {
+                            console.log(`* ${offset.toString().padStart(5)} ms : ${value.toFixed(3).padStart(6)}`);
+                        }
+                    }
                 }
             }));
             break;

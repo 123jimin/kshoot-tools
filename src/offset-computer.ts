@@ -8,15 +8,30 @@ const COMPUTE_SAMPLE_RATE = 1000;
 const BUFFER_SIZE = (1 << 15);
 const BUFFER_SEC = BUFFER_SIZE / COMPUTE_SAMPLE_RATE;
 
-function getChartEnergyMap(chart: kshoot.Chart): Map<kshoot.Pulse, number> {
+function GCD(x: bigint, y: bigint): bigint {
+    while(y) [y, x] = [x%y, y];
+    return x;
+  }
+function getBeatWeight(timing_info: kshoot.TimingInfo) {
+    const pulse = timing_info.pulse - timing_info.measure.pulse;
+    const common_beat = GCD(pulse, timing_info.measure.length);
+
+    if(common_beat % timing_info.measure.beat_length === 0n) return 1;
+
+    return Number(common_beat) / Number(timing_info.measure.length);
+}
+
+function getChartEnergyMap(chart: kshoot.Chart, timing: kshoot.Timing = chart.getTiming()): Map<kshoot.Pulse, number> {
     const energy_map: Map<kshoot.Pulse, number> = new Map();
 
-    for(const [pulse, notes] of chart.buttonNotes()) {
-        energy_map.set(pulse, notes.length);
+    for(const [timing_info, notes] of timing.withTimingInfo(chart.buttonNotes())) {
+        const energy = Math.sqrt(notes.length);
+        energy_map.set(timing_info.pulse, energy * getBeatWeight(timing_info));
     }
 
-    for(const [pulse, conducts] of chart.laserConducts()) {
-        energy_map.set(pulse, (energy_map.get(pulse) ?? 0) + 0.5 * conducts.filter((conduct) => conduct.action !== kshoot.LaserConductAction.End).length);
+    for(const [timing_info, conducts] of timing.withTimingInfo(chart.laserConducts())) {
+        const energy = 0.5 * conducts.filter((conduct) => conduct.action !== kshoot.LaserConductAction.End).length;
+        energy_map.set(timing_info.pulse, (energy_map.get(timing_info.pulse) ?? 0) + energy * getBeatWeight(timing_info));
     }
 
     return energy_map;
@@ -115,6 +130,55 @@ function getCrossCorrelation(x: Float32Array, y: Float32Array): Float32Array {
     return FFT_BUFFER.X.inverse();
 }
 
+export class CrossCorrelation {
+    readonly data: Float32Array;
+    readonly half_window_size: number;
+
+    constructor(x: Float32Array, y: Float32Array, half_window_size = 1024) {
+        const data = getCrossCorrelation(x, y);
+        const source_half_window_size = Math.min(half_window_size, data.length >> 1);
+
+        this.data = new Float32Array(half_window_size * 2);
+        this.data.set(data.subarray(0, source_half_window_size), 0);
+        this.data.set(data.subarray(data.length - source_half_window_size), half_window_size * 2 - source_half_window_size);
+
+        this.half_window_size = half_window_size;
+    }
+
+    *peaks(prefer_center: number = this.half_window_size/2): Generator<[offset: number, correlation: number]> {
+        const prefer_center_sq = prefer_center ** 2;
+
+        const data = this.data;
+        const half_window_size = this.half_window_size;
+        for(let i=-half_window_size; i<half_window_size; ++i) {
+            const prev_v = data[i <= 0 ? data.length + i - 1 : i - 1];
+            const curr_v = data[i < 0 ? data.length + i : i];
+            const next_v = data[i < -1 ? data.length + i + 1 : i + 1];
+
+            if(prev_v > curr_v || next_v > curr_v) continue;
+            if(prev_v === curr_v && i > 0) continue;
+            if(next_v === curr_v && i < 0) continue;
+
+            const center_mul = prefer_center === 0 ? 1.0 : (prefer_center_sq / (prefer_center_sq + i ** 2));
+            yield [i, curr_v * center_mul];
+        }
+    }
+
+    bestOffset(prefer_center: number = this.half_window_size/2): number {
+        let max_offset = 0;
+        let max_value = 0;
+
+        for(const [offset, value] of this.peaks(prefer_center)) {
+            if(value > max_value) {
+                max_offset = offset;
+                max_value = value;
+            }
+        }
+
+        return max_offset;
+    }
+}
+
 export class OffsetComputer {
     readonly chart_ctx: LoadedKShootChartContext;
     readonly chart: kshoot.Chart;
@@ -133,7 +197,7 @@ export class OffsetComputer {
     private _chart_energy_map: Map<kshoot.Pulse, number>|null = null;
     get chart_energy_map(): Map<kshoot.Pulse, number> {
         if(this._chart_energy_map) return this.chart_energy_map;
-        else return (this._chart_energy_map = getChartEnergyMap(this.chart));
+        else return (this._chart_energy_map = getChartEnergyMap(this.chart, this.timing));
     }
 
     private _getChartEnergy(): [offset: number, chart_energy: Float32Array] {
@@ -225,10 +289,10 @@ export class OffsetComputer {
         }
     }
 
-    computeCrossCorrelation(audio_file_buffer?: Buffer): Promise<Float32Array|null>;
-    computeCrossCorrelation(audio_buffer?: AudioBuffer): Promise<Float32Array|null>;
-    computeCrossCorrelation(audio?: Buffer|AudioBuffer): Promise<Float32Array|null>;
-    async computeCrossCorrelation(in_audio_file_buffer?: Buffer|AudioBuffer): Promise<Float32Array|null> {
+    computeCrossCorrelation(audio_file_buffer?: Buffer): Promise<CrossCorrelation|null>;
+    computeCrossCorrelation(audio_buffer?: AudioBuffer): Promise<CrossCorrelation|null>;
+    computeCrossCorrelation(audio?: Buffer|AudioBuffer): Promise<CrossCorrelation|null>;
+    async computeCrossCorrelation(in_audio_file_buffer?: Buffer|AudioBuffer): Promise<CrossCorrelation|null> {
         const [offset, chart_energy] = this._getChartEnergy();
         if(chart_energy.length === 0) return null;
 
@@ -239,9 +303,7 @@ export class OffsetComputer {
         const music_energy = getMusicEnergy(audio_buffer, offset);
         if(music_energy == null) return null;
 
-        const correlation = getCrossCorrelation(chart_energy, music_energy);
-
-        return correlation;
+        return new CrossCorrelation(chart_energy, music_energy);
     }
 
     computeOffset(audio_file_buffer?: Buffer): Promise<number|null>;
@@ -252,53 +314,14 @@ export class OffsetComputer {
             return null;
         }
 
-        /*
-        {
-            const {createCanvas} = await import('canvas');
-            const canvas = createCanvas(1000, 400);
-            const ctx = canvas.getContext('2d');
-
-            ctx.beginPath();
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = "#0F0";
-            ctx.moveTo(0, 400);
-
-            for(let i=0; i<canvas.width; ++i) {
-                ctx.lineTo(i, 400 - 5 * (correlation.at(i - canvas.width/2) ?? 0));
-            }
-
-            ctx.stroke();
-            
-            ctx.beginPath();
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = "#FF0";
-            ctx.moveTo(canvas.width/2, 0);
-            ctx.lineTo(canvas.width/2, canvas.height);
-            ctx.stroke();
-
-            await (await import('node:fs/promises')).writeFile("test.png", canvas.toBuffer());
-        }
-        */
-
-        let max_dt = 0;
-        let max_correlation = 0;
-
-        for(let dt=-500; dt<=500; ++dt) {
-            const curr_correlation = (correlation.at(dt) ?? 0) * (2500 / (2500 + dt**2));
-            if(curr_correlation > max_correlation) {
-                [max_dt, max_correlation] = [dt, curr_correlation];
-            }
-        }
-
-        return this.chart.audio.bgm.offset + max_dt;
+        return this.chart.audio.bgm.offset + correlation.bestOffset();
     }
 }
 
 export async function computeOffset(chart_ctx: LoadedKShootChartContext): Promise<number|null> {
     return await (new OffsetComputer(chart_ctx)).computeOffset();
+}
+
+export async function computeCrossCorrelation(chart_ctx: LoadedKShootChartContext): Promise<CrossCorrelation|null> {
+    return await (new OffsetComputer(chart_ctx)).computeCrossCorrelation();
 }
