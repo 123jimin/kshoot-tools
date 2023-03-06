@@ -237,9 +237,9 @@ export class KShootTools implements KShootContext {
     }
 
     async save(out_dir: string, data: (Buffer|string|null)[], extension: string): Promise<void>;
-    async save(out_dir: string, data: (Buffer|string|null)[], pathMap: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string): Promise<void>;
-    async save(out_dir: string, data: (Buffer|string|null)[], pathMapOrExt: string|((chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string)): Promise<void> {
-        const pathMap: (chart_ctx: KShootChartContext & {chart: kshoot.Chart}) => string =
+    async save(out_dir: string, data: (Buffer|string|null)[], pathMap: (chart_ctx: LoadedKShootChartContext) => string): Promise<void>;
+    async save(out_dir: string, data: (Buffer|string|null)[], pathMapOrExt: string|((chart_ctx: LoadedKShootChartContext) => string)): Promise<void> {
+        const pathMap: (chart_ctx: LoadedKShootChartContext) => string =
             (typeof pathMapOrExt === 'string') ? (chart_ctx) => `${chart_ctx.file_name}.${pathMapOrExt}` : pathMapOrExt;
 
         await Promise.all(data.map(async (data, ind) => {
