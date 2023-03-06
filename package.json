@@ -1,6 +1,6 @@
 {
     "name": "kshoot-tools",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
     "files": [
         "/dist",
@@ -51,7 +51,7 @@
     "dependencies": {
         "adm-zip": "^0.5.10",
         "argparse": "^2.0.1",
-        "audio-decode": "^2.0.2",
+        "audio-decode": "^2.1.1",
         "canvas": "^2.11.0",
         "dsp.js": "^1.0.1",
         "iconv-lite": "^0.6.3",
