@@ -11,27 +11,41 @@ const BUFFER_SEC = BUFFER_SIZE / COMPUTE_SAMPLE_RATE;
 function GCD(x: bigint, y: bigint): bigint {
     while(y) [y, x] = [x%y, y];
     return x;
-  }
+}
+
 function getBeatWeight(timing_info: kshoot.TimingInfo) {
     const pulse = timing_info.pulse - timing_info.measure.pulse;
     const common_beat = GCD(pulse, timing_info.measure.length);
 
     if(common_beat % timing_info.measure.beat_length === 0n) return 1;
 
-    return Number(common_beat) / Number(timing_info.measure.length);
+    return Number(common_beat) / Number(timing_info.measure.beat_length);
 }
 
 function getChartEnergyMap(chart: kshoot.Chart, timing: kshoot.Timing = chart.getTiming()): Map<kshoot.Pulse, number> {
-    const energy_map: Map<kshoot.Pulse, number> = new Map();
+    const note_stats: Map<kshoot.Pulse, [beat_weight: number, stat: {notes: number, lasers: number}]> = new Map();
+    const getStat = (timing_info: kshoot.TimingInfo) => {
+        let entry = note_stats.get(timing_info.pulse);
+        if(entry) return entry[1];
+
+        entry = [getBeatWeight(timing_info), {notes: 0, lasers: 0}];
+        note_stats.set(timing_info.pulse, entry);
+
+        return entry[1];
+    };
 
     for(const [timing_info, notes] of timing.withTimingInfo(chart.buttonNotes())) {
-        const energy = Math.sqrt(notes.length);
-        energy_map.set(timing_info.pulse, energy * getBeatWeight(timing_info));
+        getStat(timing_info).notes += notes.length;
     }
 
     for(const [timing_info, conducts] of timing.withTimingInfo(chart.laserConducts())) {
-        const energy = 0.5 * conducts.filter((conduct) => conduct.action !== kshoot.LaserConductAction.End).length;
-        energy_map.set(timing_info.pulse, (energy_map.get(timing_info.pulse) ?? 0) + energy * getBeatWeight(timing_info));
+        getStat(timing_info).lasers += conducts.filter((conduct) => conduct.action !== kshoot.LaserConductAction.End).length;
+    }
+
+    const energy_map: Map<kshoot.Pulse, number> = new Map();
+    for(const [pulse, value] of note_stats.entries()) {
+        const stat = value[1];
+        energy_map.set(pulse, Math.cbrt(stat.notes + 0.5 * stat.lasers));
     }
 
     return energy_map;
@@ -70,13 +84,13 @@ function getMusicEnergy(audio_buffer: AudioBuffer, offset: number): Float32Array
         // K.E = 1/2 k x^2
         // P.E = 1/2 m v^2 
         // Additionally, at the previous step, it is is assumed that the mass got no external force.
+        // It's a weird and technically incorrect assumption to make, but it works.
         // ma = -kx, k = -(ma/x)
-        // K.E + P.E = 1/2 m (v^2 - ax) 
-        let [e_l, e_r] = [v_l**2 - a_l*d_l, v_r**2 - a_r*d_r];
-        if(e_l < 0) e_l = 0; if(e_r < 0) e_r = 0;
+        // K.E + P.E = 1/2 m (v^2 - ax)
 
+        let [e_l, e_r] = [v_l*pv_l - a_l*d_l, v_r*pv_r - a_r*d_r];
         const [de_l, de_r] = [e_l - pe_l, e_r - pe_r];
-        const e = ((de_l < 0 ? 0 : de_l) + (de_r < 0 ? 0 : de_r)) / 2;
+        const e = de_l + de_r;
         
         const buffer_ind_r = i * COMPUTE_SAMPLE_RATE / audio_buffer.sampleRate;
         const buffer_ind_f = buffer_ind_r % 1.0;
@@ -90,19 +104,6 @@ function getMusicEnergy(audio_buffer: AudioBuffer, offset: number): Float32Array
         }
 
         [pd_l, pd_r, pv_l, pv_r, pe_l, pe_r] = [d_l, d_r, v_l, v_r, e_l, e_r];
-    }
-
-    let prev_energy = energy_buffer[0];
-    for(let i=1; i<BUFFER_SIZE; ++i) {
-        const curr_ernrgy = energy_buffer[i];
-        const alpha = 0.98; // Half-life: -log(2)/log(alpha) ~= 34ms
-        prev_energy *= alpha;
-        if(curr_ernrgy < prev_energy) {
-            energy_buffer[i] = 0; continue;
-        } else {
-            energy_buffer[i] -= prev_energy;
-            prev_energy = curr_ernrgy;
-        }
     }
 
     return energy_buffer;
@@ -200,7 +201,7 @@ export class OffsetComputer {
         else return (this._chart_energy_map = getChartEnergyMap(this.chart, this.timing));
     }
 
-    private _getChartEnergy(): [offset: number, chart_energy: Float32Array] {
+    getChartEnergy(): [offset: number, chart_energy: Float32Array] {
         const energy_map = this.chart_energy_map;
         if(energy_map.size === 0) {
             return [0, new Float32Array()];
@@ -268,8 +269,7 @@ export class OffsetComputer {
         return [sample_offset, energy_buffer];
     }
 
-    private _music_audio_buffer: AudioBuffer|null = null;
-    private async _getMusicAudioBuffer(in_audio_file_buffer?: Buffer): Promise<AudioBuffer|null> {
+    async getMusicAudioBuffer(in_audio_file_buffer?: Buffer): Promise<AudioBuffer|null> {
         const bgm_filename = this.chart.audio.bgm.filename;
 
         let audio_file_buffer: Buffer|null = null;
@@ -293,11 +293,12 @@ export class OffsetComputer {
     computeCrossCorrelation(audio_buffer?: AudioBuffer): Promise<CrossCorrelation|null>;
     computeCrossCorrelation(audio?: Buffer|AudioBuffer): Promise<CrossCorrelation|null>;
     async computeCrossCorrelation(in_audio_file_buffer?: Buffer|AudioBuffer): Promise<CrossCorrelation|null> {
-        const [offset, chart_energy] = this._getChartEnergy();
+        const [offset, chart_energy] = this.getChartEnergy();
         if(chart_energy.length === 0) return null;
 
         const audio_buffer: AudioBuffer|null =
-            (in_audio_file_buffer == null ||in_audio_file_buffer instanceof Buffer) ? await this._getMusicAudioBuffer(in_audio_file_buffer) : in_audio_file_buffer;
+            (in_audio_file_buffer == null || in_audio_file_buffer instanceof Buffer) ?
+                await this.getMusicAudioBuffer(in_audio_file_buffer) : in_audio_file_buffer;
         if(audio_buffer == null) return null;
         
         const music_energy = getMusicEnergy(audio_buffer, offset);
@@ -324,4 +325,69 @@ export async function computeOffset(chart_ctx: LoadedKShootChartContext): Promis
 
 export async function computeCrossCorrelation(chart_ctx: LoadedKShootChartContext): Promise<CrossCorrelation|null> {
     return await (new OffsetComputer(chart_ctx)).computeCrossCorrelation();
+}
+
+export async function drawDebugImage(chart_ctx: LoadedKShootChartContext): Promise<Buffer|null> {
+    const offset_computer = new OffsetComputer(chart_ctx);
+    const corr = await offset_computer.computeCrossCorrelation();
+    if(corr == null) return null;
+
+    const {createCanvas} = await import('canvas');
+
+    const canvas = createCanvas(1600, 400);
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    {
+        ctx.beginPath();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#F00';
+        ctx.lineWidth = 1;
+        ctx.moveTo(canvas.width/2, 0);
+        ctx.lineTo(canvas.width/2, canvas.height);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.strokeStyle = '#933';
+        ctx.lineWidth = 1;
+
+        for(let i=-20; i<=20; ++i) {
+            if(i === 0) continue;
+            const x = canvas.width/2 + i*40;
+            ctx.moveTo(x, (i%10 === 0 ? 0 : i%5 === 0 ? 0.1 : 0.2) * canvas.height);
+            ctx.lineTo(x, canvas.height);
+        }
+        ctx.stroke();
+    }
+
+    // correlation
+    {
+        ctx.beginPath();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = '#FFF';
+        ctx.moveTo(0, canvas.height);
+
+        const min_corr = Math.max(0, Math.min(...corr.data));
+        const max_corr = Math.max(0, ...corr.data);
+        let corr_range = max_corr - min_corr;
+
+        if(corr_range === 0) corr_range = 1;
+
+        let min_ind = Math.floor(-canvas.width/4);
+        let max_ind = Math.ceil(canvas.width/4);
+
+        for(let i=min_ind; i<=max_ind; ++i) {
+            const x = canvas.width/2 + i*2;
+            const y = ((corr.data[i < 0 ? i + corr.data.length : i] ?? 0) - min_corr) / corr_range;
+            ctx.lineTo(x, canvas.height*(1.0 - y));
+        }
+
+        ctx.stroke();
+    }
+
+    return canvas.toBuffer();
 }

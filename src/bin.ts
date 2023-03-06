@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import {ArgumentParser} from 'argparse';
 
 import {KShootTools, computeCrossCorrelation, npy} from "./index.js";
+import {drawDebugImage} from './offset-computer.js';
 
 function parsePath(path_str: string): string {
     if(path_str === "") return "";
@@ -40,6 +41,7 @@ parser_convert.add_argument('-o', '--out_dir', {type: parsePath, help: "output d
 
 const parser_sync = subparsers.add_parser('sync', {help: "calculate the proper offset for the chart(s)"});
 parser_sync.add_argument('-v', '--verbose', {action: 'store_true', help: "print detailed information"});
+parser_sync.add_argument('--debug_image_dir', {type: parsePath, help: "output directory for debug image(s)"});
 
 const args = parser.parse_args();
 
@@ -98,6 +100,11 @@ const args = parser.parse_args();
             break;
         }
         case 'sync': {
+            if(args.debug_image_dir) {
+                await kshoot_tools.save(args.debug_image_dir, await Promise.all(kshoot_tools.charts.map(drawDebugImage)), 'png');
+                break;
+            }
+
             await Promise.all(kshoot_tools.charts.map(async (chart_ctx) => {
                 const corr = await computeCrossCorrelation(chart_ctx);
                 if(corr == null) {
