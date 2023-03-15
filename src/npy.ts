@@ -1,7 +1,24 @@
 import * as kshoot from 'kshoot';
 
+enum NoteColumn {
+    EMPTY,
+    CHIP,
+    HOLD,
+    MAX,
+}
+
+enum LaserColumn {
+    EMPTY,
+    STATIONARY,
+    MOVING,
+    X_VALUE,
+    MAX,
+}
+
 const NUMPY_HEADER = Buffer.from([0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59, 0x01, 0x00]);
-const COLUMN_SIZE = 10;
+
+const LASER_BASE_IND = NoteColumn.MAX * 6;
+const COLUMN_SIZE = LASER_BASE_IND + LaserColumn.MAX * 2;
 
 export class NumpyChart {
     offset = 0; // Note: always should be non-negative
@@ -12,23 +29,30 @@ export class NumpyChart {
     private _length = 0;
     get length(): number { return this._length; }
 
-    setInterval(ind: number, start_ms: number, end_ms: number) {
+    private _note_bookkeep: number[] = [0, 0, 0, 0, 0, 0];
+    setNoteInterval(ind: number, sub_ind: number, start_ms: number, end_ms: number) {
         const start_find = (start_ms * this.resolution) / 1000;
-        const start_ind = Math.floor(start_find);
+        let start_ind = Math.round(start_find);
         const end_find = (end_ms * this.resolution) / 1000;
-        const end_ind = Math.floor(end_find);
+        let end_ind = Math.round(end_find);
 
-        for(let i=start_ind; i<=end_ind; ++i) {
-            let value = 1.0;
-            if(start_ind !== end_ind) {
-                if(i === start_ind) {
-                    value = 1.0 - (start_find % 1.0);
-                } else if(i === end_ind) {
-                    value = end_find % 1.0;
-                }
-            }
-            this.data[COLUMN_SIZE*i + ind] = value;
+        if(start_ind < this._note_bookkeep[ind]) {
+            start_ind = this._note_bookkeep[ind];
         }
+
+        if(end_ind <= start_ind) {
+            end_ind = start_ind+1;
+        }
+
+        const empty_lane = ind*3;
+        const fill_lane = empty_lane + sub_ind;
+
+        for(let i=start_ind; i<end_ind; ++i) {
+            this.data[COLUMN_SIZE*i + fill_lane] = 1;
+            this.data[COLUMN_SIZE*i + empty_lane] = 0;
+        }
+
+        this._note_bookkeep[ind] = end_ind;
     }
 
     getTimeByPulse(pulse: kshoot.Pulse): number {
@@ -44,69 +68,97 @@ export class NumpyChart {
         this._length = Math.floor((last_note_ms*this.resolution)/1000) + 2;
         this.data = new Float32Array(this._length*COLUMN_SIZE);
 
+        this._note_bookkeep = [0, 0, 0, 0, 0, 0, 0, 0];
+
+        for(let i=0; i<this._length; ++i) {
+            for(let j=0; j<6; ++j) {
+                this.data[COLUMN_SIZE*i + NoteColumn.MAX*j] = 1.0;
+            }
+            for(let j=0; j<2; ++j) {
+                this.data[COLUMN_SIZE*i + LASER_BASE_IND + LaserColumn.MAX*j] = 1.0;
+            }
+        }
+
         // Export notes
         for(const [pulse, notes] of chart.buttonNotes()) {
             const note_start_ms = this.getTimeByPulse(pulse);
             for(const note of notes) {
-                let note_end_ms = note.length === 0n ? note_start_ms : this.getTimeByPulse(pulse + note.length);
-                if(note_end_ms < note_start_ms + MS_PER_ROW) note_end_ms = note_start_ms + MS_PER_ROW;
-                this.setInterval(note.lane, note_start_ms, note_end_ms);
+                if(note.length === 0n) {
+                    this.setNoteInterval(note.lane, NoteColumn.CHIP, note_start_ms, note_start_ms);
+                } else {
+                    let note_end_ms = this.getTimeByPulse(pulse + note.length);
+                    if(note_end_ms < note_start_ms + MS_PER_ROW) note_end_ms = note_start_ms + MS_PER_ROW;
+                    this.setNoteInterval(note.lane, NoteColumn.HOLD, note_start_ms, note_end_ms);
+                }
             }
         }
 
         // Export lasers
         for(let lane=0; lane<2; ++lane) {
-            const section_ind = 6 + lane*2;
-            const value_ind = 7 + lane*2;
+            const column_empty = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.EMPTY;
+            const column_stationary = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.STATIONARY;
+            const column_moving = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.MOVING;
+            const column_x_value = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.X_VALUE;
+
+            let bookkeep = 0;
             for(const [section_pulse, section, section_width] of chart.note.laser[lane]) {
                 if(section.size === 0) continue;
                 const section_start_ms = this.getTimeByPulse(section_pulse);
-                const section_start_ind = Math.floor((section_start_ms * this.resolution) / 1000);
+                const section_start_ind = Math.round((section_start_ms * this.resolution) / 1000);
 
-                const last_entry = section.nextLowerPair(void 0);
-                if(last_entry == null) continue;
+                const section_points: kshoot.kson.GraphSectionPoint[] = [...section];
+                if(section_points.length === 0) continue;
 
-                const posToFloat = (pos: number): number => 2*section_width*(pos-0.5);
-
-                const [pulse_len, last_data] = last_entry;
-                let section_end_ms = this.getTimeByPulse(section_pulse + pulse_len);
-                if(last_data[0][0] !== last_data[0][1]) {
-                    section_end_ms += MS_PER_ROW;
+                const posToFloat = (pos: number): number => section_width*(pos-0.5);
+                
+                if(bookkeep < section_start_ind) {
+                    bookkeep = section_start_ind;
                 }
-                const section_end_ind = Math.floor((section_end_ms * this.resolution) / 1000);
 
-                this.setInterval(section_ind, section_start_ms - MS_PER_ROW, section_end_ms + MS_PER_ROW);
-                const it = section[Symbol.iterator]();
-                let [curr_pulse, curr_point]: [kshoot.Pulse, kshoot.kson.GraphValue] = it.next().value;
-                let next_entry: [kshoot.Pulse, kshoot.kson.GraphValue]|null = it.next().value;
+                let prev_inter_column = column_stationary;
 
-                let curr_ms = this.getTimeByPulse(section_pulse+curr_pulse);
-                let next_ms = next_entry == null ? null : this.getTimeByPulse(section_pulse+next_entry[0]);
+                for(let i=0; i<section_points.length; ++i) {
+                    const curr_point = section_points[i];
+                    const next_point = i+1 === section_points.length ? null : section_points[i+1];
+                    const inter_column = next_point && next_point[1][0] !== curr_point[1][1] ? column_moving : column_stationary;
 
-                for(let i=section_start_ind-1; i<=section_end_ind+1; ++i) {
-                    const ms = (i * 1000) / this.resolution;
-                    if(ms < curr_ms) {
-                        this.data[COLUMN_SIZE*i + value_ind] = posToFloat(curr_point[0]);
-                        continue;
+                    if(curr_point[1][0] !== curr_point[1][1]) {
+                        this.data[COLUMN_SIZE*bookkeep + column_moving] = 1;
+                        this.data[COLUMN_SIZE*bookkeep + column_empty] = 0;
+                        this.data[COLUMN_SIZE*bookkeep + column_x_value] = posToFloat(curr_point[1][0]);
+
+                        this.data[COLUMN_SIZE*(bookkeep+1) + inter_column] = 1;
+                        this.data[COLUMN_SIZE*(bookkeep+1) + column_empty] = 0;
+                        this.data[COLUMN_SIZE*bookkeep + column_x_value] = posToFloat(curr_point[1][1]);
+                        bookkeep += 2;
                     }
 
-                    while(next_entry != null && next_ms != null && next_ms <= ms) {
-                        [curr_pulse, curr_point] = next_entry;
-                        curr_ms = next_ms;
+                    if(!next_point) {
+                        if(curr_point[1][0] === curr_point[1][1]) {
+                            this.data[COLUMN_SIZE*bookkeep + prev_inter_column] = 1;
+                            this.data[COLUMN_SIZE*bookkeep + column_empty] = 1;
+                            this.data[COLUMN_SIZE*bookkeep + column_x_value] = posToFloat(curr_point[1][0]);    
+                        }
+                        break;
+                    }
 
-                        next_entry = it.next().value;
-                        next_ms = next_entry == null ? null : this.getTimeByPulse(section_pulse+next_entry[0]);
+                    const next_ms = this.getTimeByPulse(section_pulse + next_point[0]);
+                    let next_ind = Math.round((next_ms * this.resolution) / 1000);
+                    if(next_ind <= bookkeep) next_ind = bookkeep + 1;
+
+                    const pos_from = posToFloat(curr_point[1][1]);
+                    const pos_to = posToFloat(next_point[1][1]);
+
+                    for(let t=bookkeep; t<next_ind; ++t) {
+                        const lerp = t / (next_ind - bookkeep);
+
+                        this.data[COLUMN_SIZE*t + inter_column] = 1;
+                        this.data[COLUMN_SIZE*t + column_empty] = 0;
+                        this.data[COLUMN_SIZE*bookkeep + column_x_value] = (1-lerp)*pos_from + lerp*pos_to;
                     }
-                    
-                    if(next_entry == null || next_ms == null) {
-                        this.data[COLUMN_SIZE*i + value_ind] = posToFloat(curr_point[1]);
-                    } else {
-                        let lerp_t = (ms - curr_ms) / (next_ms - curr_ms);
-                        if(lerp_t < 0) lerp_t = 0;
-                        else if(lerp_t > 1) lerp_t = 1;
-                        const lerp_value = curr_point[1] + (next_entry[1][0] - curr_point[1]) * lerp_t;
-                        this.data[COLUMN_SIZE*i + value_ind] = posToFloat(lerp_value);
-                    }
+
+                    bookkeep = next_ind;
+                    prev_inter_column = inter_column;
                 }
             }
         }

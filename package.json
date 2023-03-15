@@ -1,6 +1,6 @@
 {
     "name": "kshoot-tools",
-    "version": "0.1.2",
+    "version": "0.2.0",
     "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
     "files": [
         "/dist",
@@ -40,11 +40,11 @@
     "devDependencies": {
         "@types/adm-zip": "^0.5.0",
         "@types/argparse": "^2.0.10",
-        "@types/node": "^18.13.0",
-        "@typescript-eslint/eslint-plugin": "^5.50.0",
-        "@typescript-eslint/parser": "^5.50.0",
+        "@types/node": "^18.15.3",
+        "@typescript-eslint/eslint-plugin": "^5.55.0",
+        "@typescript-eslint/parser": "^5.55.0",
         "chai": "^4.3.7",
-        "eslint": "^8.33.0",
+        "eslint": "^8.36.0",
         "mocha": "^10.2.0",
         "typescript": "^4.9.5"
     },
@@ -55,6 +55,6 @@
         "canvas": "^2.11.0",
         "dsp.js": "^1.0.1",
         "iconv-lite": "^0.6.3",
-        "kshoot": "^0.1.0"
+        "kshoot": "^0.2.0"
     }
 }
