@@ -10,7 +10,8 @@ enum NoteColumn {
 enum LaserColumn {
     EMPTY,
     STATIONARY,
-    MOVING,
+    LEFT,
+    RIGHT,
     X_VALUE,
     MAX,
 }
@@ -97,7 +98,8 @@ export class NumpyChart {
         for(let lane=0; lane<2; ++lane) {
             const column_empty = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.EMPTY;
             const column_stationary = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.STATIONARY;
-            const column_moving = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.MOVING;
+            const column_left = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.LEFT;
+            const column_right = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.RIGHT;
             const column_x_value = LASER_BASE_IND + lane*LaserColumn.MAX + LaserColumn.X_VALUE;
 
             let bookkeep = 0;
@@ -120,10 +122,14 @@ export class NumpyChart {
                 for(let i=0; i<section_points.length; ++i) {
                     const curr_point = section_points[i];
                     const next_point = i+1 === section_points.length ? null : section_points[i+1];
-                    const inter_column = next_point && next_point[1][0] !== curr_point[1][1] ? column_moving : column_stationary;
+                    const inter_column = next_point ?
+                        curr_point[1][1] > next_point[1][0] ? column_left :
+                        curr_point[1][1] < next_point[1][0] ? column_right :
+                        column_stationary :
+                        column_stationary;
 
                     if(curr_point[1][0] !== curr_point[1][1]) {
-                        this.data[COLUMN_SIZE*bookkeep + column_moving] = 1;
+                        this.data[COLUMN_SIZE*bookkeep + (curr_point[1][0] > curr_point[1][1] ? column_left : column_right)] = 1;
                         this.data[COLUMN_SIZE*bookkeep + column_empty] = 0;
                         this.data[COLUMN_SIZE*bookkeep + column_x_value] = posToFloat(curr_point[1][0]);
 
