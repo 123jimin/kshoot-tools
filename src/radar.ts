@@ -1,9 +1,22 @@
 import * as path from 'node:path';
 import * as url from 'node:url';
 
-import {registerFont, createCanvas, type Canvas, type CanvasRenderingContext2D} from 'canvas';
+import {registerFont, createCanvas, type CanvasRenderingContext2D} from 'canvas';
 
 import * as kshoot from 'kshoot';
+
+export interface RadarConstructorChartArgs {
+    chart: kshoot.Chart;
+    timing?: kshoot.Timing;
+}
+
+export interface RadarConstructorManualArgs {
+    stat: RadarStat;
+    difficulty?: string;
+    level?: string|number;
+}
+
+export type RadarConstructorArgs = RadarConstructorChartArgs | RadarConstructorManualArgs;
 
 export interface RadarStat {
     notes: number;
@@ -14,15 +27,62 @@ export interface RadarStat {
     tricky: number;
 }
 
-export function radarStatToString(stat: RadarStat, no_round = false): string {
-    const arr: string[] = [];
-    for(const k of (['notes', 'peak', 'tsumami', 'tricky', 'hand_trip', 'one_hand'] as const)) {
-        const value = stat[k];
-        arr.push(`${k}: ${no_round ? value.toFixed(3) : Math.round(value).toString()}`)
-    }
+export const RadarStat = Object.freeze({
+    rawFromChart(chart: kshoot.Chart, timing?: kshoot.Timing): RadarStat {
+        const stat = kshoot.tools.stat.getStat(chart, timing);
+        const duration = chart.getDuration() / 1000;
+        
+        const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
+    
+        // TODO: find more accurate formulas for TRICKY and other values
+        return {
+            notes: (stat.chips + stat.holds) / duration,
+            peak: stat.peak_note_density,
+            tsumami: (stat.slant_laser_chains + stat.slams) / duration,
+            one_hand: stat.one_hand_notes / duration,
+            hand_trip: stat.wrong_side_notes / duration,
+            tricky: (bc_jacks + 2*adlr_jacks + 4000*stat.bpm_inverse_differences) / duration,
+        };
+    },
+    fromRaw(radar_stat: RadarStat): RadarStat {
+        radar_stat.notes = (16.663 * radar_stat.notes + 38.798) / 1.5;
+        radar_stat.peak = (2.1644 * radar_stat.peak + 42.113) / 1.5;
+        radar_stat.tsumami = (20 * radar_stat.tsumami + 18) / 1.5;
+        radar_stat.one_hand = (64.817 * radar_stat.one_hand) / 1.5 + 10;
+        radar_stat.hand_trip = (168.25 * radar_stat.hand_trip) / 1.5 + 10;
+        radar_stat.tricky = (177.18 * radar_stat.tricky) / 1.5 + 10;
 
-    return `{${arr.join(', ')}}`;
-}
+        return radar_stat;
+    },
+    fromChart(chart: kshoot.Chart, timing?: kshoot.Timing): RadarStat {
+        return RadarStat.clamp(RadarStat.fromRaw(RadarStat.rawFromChart(chart, timing)));
+    },
+    clamp(radar_stat: RadarStat): RadarStat {
+        for(const str_k in radar_stat) {
+            const k = str_k as keyof RadarStat;
+    
+            if(radar_stat[k] < 10) radar_stat[k] = 10;
+            if(radar_stat[k] >= 1000) radar_stat[k] = 1000;
+        }
+    
+        return radar_stat;
+    },
+    createEmpty(): RadarStat {
+        return RadarStat.clamp(RadarStat.fromRaw({
+            notes: 0, peak: 0, tsumami: 0, one_hand: 0, hand_trip: 0, tricky: 0,
+        }))
+    },
+    toString(radar_stat: RadarStat, no_round = false): string {
+        const arr: string[] = [];
+        for(const k of (['notes', 'peak', 'tsumami', 'tricky', 'hand_trip', 'one_hand'] as const)) {
+            const value = radar_stat[k];
+            arr.push(`${k}: ${no_round ? value.toFixed(3) : Math.round(value).toString()}`)
+        }
+    
+        return `{${arr.join(', ')}}`;
+    },
+});
 
 export interface Shape {
     width: number;
@@ -42,21 +102,15 @@ const HEXAGON_DIRS = Object.freeze([
 ] as const);
 
 export class Radar {
-    readonly chart: kshoot.Chart;
-    readonly timing: kshoot.Timing;
+    shape: Shape = {width: 500, height: 450, size: 150};
+    stat: RadarStat;
+    difficulty?: string;
+    level?: string;
 
-    readonly shape: Shape;
-    readonly stat: kshoot.tools.stat.Stat;
-
-    constructor(args: {chart: kshoot.Chart, timing?: kshoot.Timing}) {
-        this.chart = args.chart;
-        this.timing = args.timing ?? this.chart.getTiming();
-
-        this.shape = {
-            width: 500, height: 450, size: 150,
-        };
-
-        this.stat = kshoot.tools.stat.getStat(this.chart);
+    constructor(args: RadarConstructorArgs) {
+        this.stat = ('stat' in args) ? args.stat : ('chart' in args) ? RadarStat.fromChart(args.chart, args.timing) : RadarStat.createEmpty();
+        this.difficulty = ('difficulty' in args) ? args.difficulty : ('chart' in args) ? args.chart.difficulty_id.toUpperCase() : (void 0);
+        this.level = ('level' in args) ? `${args.level}` : ('chart' in args) ? args.chart.meta.level.toString() : (void 0); 
     }
 
     renderBackground(ctx: CanvasRenderingContext2D) {
@@ -100,68 +154,35 @@ export class Radar {
 
         ctx.stroke();
 
-        ctx.font = "72px ConcertOne";
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
-        ctx.fillText(this.chart.difficulty_id.toUpperCase(), 0, 0);
+        if(this.difficulty) {
+            ctx.font = "72px ConcertOne";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+            ctx.fillText(this.difficulty, 0, 0);
+        }
 
-        ctx.font = "96px ConcertOne";
-        ctx.textBaseline = 'top';
-        ctx.fillText(this.chart.meta.level.toString().padStart(2, '0'), 0, -20);
+        if(this.level) {
+            ctx.font = "96px ConcertOne";
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = "rgba(0, 0, 0, 0.25)";
+            ctx.fillText(this.level.padStart(2, '0'), 0, -20);
+        }
 
         ctx.restore();
     }
 
-    getRadarStat(): RadarStat {
-        const stat = this.stat;
-        const duration = this.chart.getDuration()/1000;
-
-        const bc_jacks = [1, 2].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
-        const adlr_jacks = [0, 3, 4, 5].map((lane) => stat.by_button_lane[lane].jacks).reduce((x, y) => x+y);
-
-        // TODO: find more accurate formulas for TRICKY and other values
-        return {
-            notes: (stat.chips + stat.holds) / duration,
-            peak: stat.peak_note_density,
-            tsumami: (stat.slant_laser_chains + stat.slams) / duration,
-            one_hand: stat.one_hand_notes / duration,
-            hand_trip: stat.wrong_side_notes / duration,
-            tricky: (bc_jacks + 2*adlr_jacks + 4000*stat.bpm_inverse_differences) / duration,
-        };
-    }
-
-    getScaledRadarStat(): RadarStat {
-        const radar_stat = this.getRadarStat();
-
-        radar_stat.notes = (16.663 * radar_stat.notes + 38.798) / 1.5;
-        radar_stat.peak = (2.1644 * radar_stat.peak + 42.113) / 1.5;
-        radar_stat.tsumami = (20 * radar_stat.tsumami + 18) / 1.5;
-        radar_stat.one_hand = (64.817 * radar_stat.one_hand) / 1.5 + 10;
-        radar_stat.hand_trip = (168.25 * radar_stat.hand_trip) / 1.5 + 10;
-        radar_stat.tricky = (177.18 * radar_stat.tricky) / 1.5 + 10;
-
-        for(const str_k in radar_stat) {
-            const k = str_k as keyof RadarStat;
-
-            if(radar_stat[k] < 10) radar_stat[k] = 10;
-            if(radar_stat[k] >= 1000) radar_stat[k] = 1000;
-        }
-
-        return radar_stat;
-    }
-
-    toString(raw?: boolean) {
-        return radarStatToString(raw ? this.getRadarStat() : this.getScaledRadarStat(), raw);
+    toString() {
+        return RadarStat.toString(this.stat);
     }
 
     renderRadar(ctx: CanvasRenderingContext2D) {
         ctx.save();
         ctx.translate(this.shape.width/2, this.shape.height/2);
 
-        const radar_stat = this.getScaledRadarStat();
         const stats = [
-            radar_stat.notes, radar_stat.peak, radar_stat.tsumami, radar_stat.tricky, radar_stat.hand_trip, radar_stat.one_hand, 
+            this.stat.notes, this.stat.peak, this.stat.tsumami, this.stat.tricky, this.stat.hand_trip, this.stat.one_hand, 
         ];
         
         const gradient = ctx.createRadialGradient(0, 0, this.shape.size * 0.8, 0, 0, this.shape.size * 1.25);
@@ -215,6 +236,7 @@ export class Radar {
         ctx.restore();
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async render(params: Params): Promise<Buffer> {
         const canvas = createCanvas(this.shape.width, this.shape.height);
         const ctx = canvas.getContext('2d');
