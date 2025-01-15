@@ -296,9 +296,10 @@ export class OffsetComputer {
         const [offset, chart_energy] = this.getChartEnergy();
         if(chart_energy.length === 0) return null;
 
-        const audio_buffer: AudioBuffer|null =
-            (in_audio_file_buffer == null || in_audio_file_buffer instanceof Buffer) ?
+        const audio_buffer =
+            (in_audio_file_buffer == null || Buffer.isBuffer(in_audio_file_buffer)) ?
                 await this.getMusicAudioBuffer(in_audio_file_buffer) : in_audio_file_buffer;
+
         if(audio_buffer == null) return null;
         
         const music_energy = getMusicEnergy(audio_buffer, offset);

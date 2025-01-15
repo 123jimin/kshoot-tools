@@ -1,6 +1,6 @@
 {
     "name": "kshoot-tools",
-    "version": "0.3.2",
+    "version": "0.3.3",
     "description": "A collection of tools related to KSH and KSON chart files of K-Shoot Mania",
     "files": [
         "/dist",
@@ -38,21 +38,21 @@
     },
     "homepage": "https://github.com/123jimin/kshoot-tools#readme",
     "devDependencies": {
-        "@types/adm-zip": "^0.5.5",
-        "@types/argparse": "^2.0.16",
-        "@types/node": "^22.5.2",
-        "@typescript-eslint/eslint-plugin": "^8.3.0",
-        "@typescript-eslint/parser": "^8.3.0",
-        "chai": "^5.1.1",
-        "eslint": "^9.9.1",
-        "mocha": "^10.7.3",
-        "typescript": "^5.5.4"
+        "@types/adm-zip": "^0.5.7",
+        "@types/argparse": "^2.0.17",
+        "@types/node": "^22.10.6",
+        "@typescript-eslint/eslint-plugin": "^8.20.0",
+        "@typescript-eslint/parser": "^8.20.0",
+        "chai": "^5.1.2",
+        "eslint": "^9.18.0",
+        "mocha": "^11.0.1",
+        "typescript": "^5.7.3"
     },
     "dependencies": {
         "adm-zip": "^0.5.16",
         "argparse": "^2.0.1",
         "audio-decode": "^2.2.2",
-        "canvas": "^2.11.2",
+        "canvas": "^3.0.1",
         "dsp.js": "^1.0.1",
         "iconv-lite": "^0.6.3",
         "kshoot": "^0.2.1"

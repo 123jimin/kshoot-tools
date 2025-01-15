@@ -3,6 +3,7 @@
         "argparse",
         "descr",
         "disp",
+        "Jimin",
         "KSH",
         "kshoot",
         "kshootmania",
